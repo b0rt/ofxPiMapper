@@ -1,0 +1,87 @@
+#!/bin/bash
+# Example User Configuration for ofxPiMapper Build System
+#
+# Copy this file to user.conf and customize your build:
+#   cp user.conf.example user.conf
+#
+# Then build with:
+#   sudo ./build.sh --config ../config/user.conf
+#
+# This file overrides settings from build.conf
+
+################################################################################
+# Quick Start Examples
+################################################################################
+
+# Example 1: Basic customization
+# RPI_USERNAME="mymapper"
+# RPI_PASSWORD="mypassword"
+# HOSTNAME="projection-pi"
+# AUTOSTART_ENABLED="true"
+
+# Example 2: Performance build with auto-start
+# GPU_MEM="384"
+# CPU_GOVERNOR="performance"
+# ENABLE_OVERCLOCK="true"
+# AUTOSTART_ENABLED="true"
+# AUTOSTART_PROJECT="example_simpler"
+
+# Example 3: Minimal build for development
+# BASE_IMAGE="lite"
+# AUTOSTART_ENABLED="false"
+# INCLUDE_SAMPLE_MEDIA="false"
+
+################################################################################
+# Your Custom Configuration
+################################################################################
+
+# System settings
+# RPI_USERNAME="mapper"
+# RPI_PASSWORD="projection"
+# HOSTNAME="ofxpimapper"
+# TIMEZONE="America/New_York"
+
+# WiFi configuration (uncomment and fill in)
+# WIFI_SSID="YourNetworkName"
+# WIFI_PASSWORD="YourNetworkPassword"
+# WIFI_COUNTRY="US"
+
+# Auto-start configuration
+# AUTOSTART_ENABLED="true"
+# AUTOSTART_PROJECT="example_simpler"
+# AUTOSTART_FULLSCREEN="true"
+# AUTOSTART_DELAY="15"
+
+# Performance tuning
+# GPU_MEM="256"
+# CPU_GOVERNOR="performance"
+# DISABLE_SWAP="true"
+
+# Overclock (WARNING: May void warranty and cause instability)
+# ENABLE_OVERCLOCK="false"
+# OVERCLOCK_ARM_FREQ="2000"
+# OVERCLOCK_GPU_FREQ="750"
+
+# Additional packages to install
+# EXTRA_SYSTEM_PACKAGES=(
+#     "vim"
+#     "tmux"
+#     "screen"
+#     "net-tools"
+# )
+
+# Custom addons to install (format: "repo_url|branch|addon_name")
+# CUSTOM_ADDONS=(
+#     "https://github.com/username/ofxCustomAddon.git|master|ofxCustomAddon"
+# )
+
+# Post-installation scripts to run
+# POST_INSTALL_SCRIPTS=(
+#     "/path/to/custom-setup.sh"
+#     "/path/to/another-script.sh"
+# )
+
+# Build options
+# PARALLEL_JOBS="4"
+# COMPRESS_IMAGE="true"
+# INCLUDE_SAMPLE_MEDIA="true"

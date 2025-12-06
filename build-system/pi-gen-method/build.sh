@@ -290,28 +290,28 @@ chmod +x "${STAGE_DIR}/prerun.sh"
 
 # Stage 00: System Dependencies
 mkdir -p "${STAGE_DIR}/00-install-dependencies"
-cat > "${STAGE_DIR}/00-install-dependencies/00-run.sh" <<'EOFRUN'
-#!/bin/bash -e
-# Install system dependencies
-
-on_chroot << 'EOFCHROOT'
-# Copy the installation script
-EOFCHROOT
+mkdir -p "${STAGE_DIR}/00-install-dependencies/files"
 
 # Copy the dependencies installation script
 cp "${BUILD_SYSTEM_DIR}/scripts/install-dependencies.sh" \
    "${STAGE_DIR}/00-install-dependencies/files/install-dependencies.sh"
 
-cat >> "${STAGE_DIR}/00-install-dependencies/00-run.sh" <<'EOFRUN2'
+cat > "${STAGE_DIR}/00-install-dependencies/00-run.sh" <<'EOFRUN'
+#!/bin/bash -e
+# Install system dependencies
+
+on_chroot << 'EOFCHROOT'
 # Run dependencies installation
 bash /tmp/install-dependencies.sh
+EOFCHROOT
+EOFRUN
 
-EOFRUN2
 chmod +x "${STAGE_DIR}/00-install-dependencies/00-run.sh"
-mkdir -p "${STAGE_DIR}/00-install-dependencies/files"
 
 # Stage 01: Configure X11
 mkdir -p "${STAGE_DIR}/01-configure-x11"
+mkdir -p "${STAGE_DIR}/01-configure-x11/files"
+
 cp "${BUILD_SYSTEM_DIR}/scripts/configure-x11.sh" \
    "${STAGE_DIR}/01-configure-x11/files/configure-x11.sh"
 
@@ -323,10 +323,11 @@ EOFCHROOT
 EOFRUN
 
 chmod +x "${STAGE_DIR}/01-configure-x11/00-run.sh"
-mkdir -p "${STAGE_DIR}/01-configure-x11/files"
 
 # Stage 02: Configure Auto-login
 mkdir -p "${STAGE_DIR}/02-configure-autologin"
+mkdir -p "${STAGE_DIR}/02-configure-autologin/files"
+
 cp "${BUILD_SYSTEM_DIR}/scripts/configure-autologin.sh" \
    "${STAGE_DIR}/02-configure-autologin/files/configure-autologin.sh"
 
@@ -338,10 +339,11 @@ EOFCHROOT
 EOFRUN
 
 chmod +x "${STAGE_DIR}/02-configure-autologin/00-run.sh"
-mkdir -p "${STAGE_DIR}/02-configure-autologin/files"
 
 # Stage 03: Install openFrameworks
 mkdir -p "${STAGE_DIR}/03-install-openframeworks"
+mkdir -p "${STAGE_DIR}/03-install-openframeworks/files"
+
 cp "${BUILD_SYSTEM_DIR}/scripts/install-openframeworks.sh" \
    "${STAGE_DIR}/03-install-openframeworks/files/install-openframeworks.sh"
 
@@ -353,10 +355,11 @@ EOFCHROOT
 EOFRUN
 
 chmod +x "${STAGE_DIR}/03-install-openframeworks/00-run.sh"
-mkdir -p "${STAGE_DIR}/03-install-openframeworks/files"
 
 # Stage 04: Install ofxPiMapper
 mkdir -p "${STAGE_DIR}/04-install-ofxpimapper"
+mkdir -p "${STAGE_DIR}/04-install-ofxpimapper/files"
+
 cp "${BUILD_SYSTEM_DIR}/scripts/install-ofxpimapper.sh" \
    "${STAGE_DIR}/04-install-ofxpimapper/files/install-ofxpimapper.sh"
 
@@ -368,11 +371,12 @@ EOFCHROOT
 EOFRUN
 
 chmod +x "${STAGE_DIR}/04-install-ofxpimapper/00-run.sh"
-mkdir -p "${STAGE_DIR}/04-install-ofxpimapper/files"
 
 # Stage 05: Configure Auto-start
 if [ "${AUTOSTART_ENABLED}" = "true" ]; then
     mkdir -p "${STAGE_DIR}/05-configure-autostart"
+    mkdir -p "${STAGE_DIR}/05-configure-autostart/files"
+
     cp "${BUILD_SYSTEM_DIR}/scripts/configure-autostart.sh" \
        "${STAGE_DIR}/05-configure-autostart/files/configure-autostart.sh"
 
@@ -384,7 +388,6 @@ EOFCHROOT
 EOFRUN
 
     chmod +x "${STAGE_DIR}/05-configure-autostart/00-run.sh"
-    mkdir -p "${STAGE_DIR}/05-configure-autostart/files"
 fi
 
 log_info "✓ Custom stage created"

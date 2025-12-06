@@ -1,0 +1,37 @@
+# Build artifacts
+deploy/
+*.img
+*.img.xz
+*.img.zip
+*.img.gz
+*.sha256
+*.log
+
+# pi-gen
+pi-gen-method/pi-gen/
+pi-gen-method/config
+pi-gen-method/work/
+
+# Packer
+packer-method/.packer.d/
+packer-method/packer_cache/
+packer-method/output-*/
+*.box
+
+# QEMU
+testing/qemu-config/*.img
+testing/qemu-config/kernel-*
+testing/qemu-config/*.dtb
+
+# User configuration (may contain passwords)
+config/user.conf
+
+# Temporary files
+*.tmp
+*.swp
+*~
+.DS_Store
+
+# Downloaded media samples
+config/media-samples/*
+!config/media-samples/.gitkeep

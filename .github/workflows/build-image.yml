@@ -1,0 +1,360 @@
+name: Build ofxPiMapper Raspberry Pi Image
+
+on:
+  # Trigger on releases
+  release:
+    types: [created]
+
+  # Manual trigger with custom configuration
+  workflow_dispatch:
+    inputs:
+      rpi_username:
+        description: 'Raspberry Pi username'
+        required: false
+        default: 'mapper'
+      rpi_password:
+        description: 'Raspberry Pi password'
+        required: false
+        default: 'projection'
+      hostname:
+        description: 'Hostname'
+        required: false
+        default: 'ofxpimapper'
+      autostart_enabled:
+        description: 'Enable auto-start'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      base_image:
+        description: 'Base image type'
+        required: false
+        default: 'desktop'
+        type: choice
+        options:
+          - 'lite'
+          - 'desktop'
+      of_version:
+        description: 'openFrameworks version'
+        required: false
+        default: '0.12.0'
+      compress_image:
+        description: 'Compress final image'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+  # Optional: Trigger on push to main (for testing)
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - 'build-system/**'
+
+jobs:
+  build-image:
+    name: Build Raspberry Pi Image
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360  # 6 hours max
+
+    steps:
+      #########################################################################
+      # Checkout and Setup
+      #########################################################################
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Free up disk space
+        run: |
+          echo "Disk space before cleanup:"
+          df -h
+
+          # Remove unnecessary packages and files
+          sudo apt-get clean
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+
+          echo "Disk space after cleanup:"
+          df -h
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            coreutils quilt parted qemu-user-static debootstrap zerofree \
+            zip dosfstools libarchive-tools libcap2-bin grep rsync xz-utils \
+            file git curl bc qemu-utils kpartx
+
+      #########################################################################
+      # Configuration
+      #########################################################################
+
+      - name: Create build configuration
+        run: |
+          cd build-system/config
+
+          # Create user configuration from workflow inputs or defaults
+          cat > user.conf <<EOF
+          # GitHub Actions Build Configuration
+          # Generated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+
+          # System settings
+          RPI_USERNAME="${{ github.event.inputs.rpi_username || 'mapper' }}"
+          RPI_PASSWORD="${{ github.event.inputs.rpi_password || 'projection' }}"
+          HOSTNAME="${{ github.event.inputs.hostname || 'ofxpimapper' }}"
+
+          # Base image
+          BASE_IMAGE="${{ github.event.inputs.base_image || 'desktop' }}"
+
+          # openFrameworks version
+          OF_VERSION="${{ github.event.inputs.of_version || '0.12.0' }}"
+
+          # Auto-start
+          AUTOSTART_ENABLED="${{ github.event.inputs.autostart_enabled || 'false' }}"
+
+          # Build options
+          COMPRESS_IMAGE="${{ github.event.inputs.compress_image || 'true' }}"
+          GENERATE_CHECKSUMS="true"
+          ENABLE_BUILD_LOG="true"
+
+          # Performance (optimized for GitHub Actions)
+          PARALLEL_JOBS="2"  # GitHub Actions runners have 2 cores
+
+          # Network
+          ENABLE_SSH="true"
+          EOF
+
+          echo "Build configuration created:"
+          cat user.conf
+
+      #########################################################################
+      # Build Image
+      #########################################################################
+
+      - name: Build image using pi-gen
+        run: |
+          cd build-system/pi-gen-method
+
+          # Run build with Docker (no root required)
+          ./build.sh --docker --config ../config/user.conf
+        env:
+          # Pass through any necessary environment variables
+          GITHUB_ACTIONS: true
+
+      #########################################################################
+      # Prepare Artifacts
+      #########################################################################
+
+      - name: Prepare build artifacts
+        id: prepare-artifacts
+        run: |
+          cd build-system/pi-gen-method/deploy
+
+          # Find the generated image
+          IMAGE_FILE=$(find . -name "*.img" -type f | head -n1)
+
+          if [ -z "$IMAGE_FILE" ]; then
+            echo "Error: No image file found"
+            exit 1
+          fi
+
+          IMAGE_NAME=$(basename "$IMAGE_FILE")
+          IMAGE_SIZE=$(stat -c%s "$IMAGE_FILE")
+          IMAGE_SIZE_MB=$((IMAGE_SIZE / 1024 / 1024))
+
+          echo "image_file=$IMAGE_NAME" >> $GITHUB_OUTPUT
+          echo "image_path=build-system/pi-gen-method/deploy/$IMAGE_NAME" >> $GITHUB_OUTPUT
+          echo "image_size_mb=$IMAGE_SIZE_MB" >> $GITHUB_OUTPUT
+
+          # Check if compressed file exists
+          if [ -f "${IMAGE_FILE}.zip" ]; then
+            ZIP_NAME=$(basename "${IMAGE_FILE}.zip")
+            ZIP_SIZE=$(stat -c%s "${IMAGE_FILE}.zip")
+            ZIP_SIZE_MB=$((ZIP_SIZE / 1024 / 1024))
+            echo "zip_file=$ZIP_NAME" >> $GITHUB_OUTPUT
+            echo "zip_path=build-system/pi-gen-method/deploy/$ZIP_NAME" >> $GITHUB_OUTPUT
+            echo "zip_size_mb=$ZIP_SIZE_MB" >> $GITHUB_OUTPUT
+          fi
+
+          # Check for SHA256 file
+          if [ -f "${IMAGE_FILE}.sha256" ]; then
+            SHA_NAME=$(basename "${IMAGE_FILE}.sha256")
+            echo "sha_file=$SHA_NAME" >> $GITHUB_OUTPUT
+            echo "sha_path=build-system/pi-gen-method/deploy/$SHA_NAME" >> $GITHUB_OUTPUT
+          fi
+
+          echo "Build artifacts prepared:"
+          echo "  Image: $IMAGE_NAME ($IMAGE_SIZE_MB MB)"
+          ls -lh
+
+      - name: Generate build info
+        run: |
+          cd build-system/pi-gen-method/deploy
+
+          cat > BUILD_INFO.txt <<EOF
+          ofxPiMapper Raspberry Pi Image - Build Information
+          ===================================================
+
+          Build Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          Git Commit: ${{ github.sha }}
+          Git Branch: ${{ github.ref_name }}
+          Workflow Run: ${{ github.run_number }}
+
+          Configuration:
+          - Username: ${{ github.event.inputs.rpi_username || 'mapper' }}
+          - Hostname: ${{ github.event.inputs.hostname || 'ofxpimapper' }}
+          - Base Image: ${{ github.event.inputs.base_image || 'desktop' }}
+          - openFrameworks: ${{ github.event.inputs.of_version || '0.12.0' }}
+          - Auto-start: ${{ github.event.inputs.autostart_enabled || 'false' }}
+
+          Image Details:
+          - File: ${{ steps.prepare-artifacts.outputs.image_file }}
+          - Size: ${{ steps.prepare-artifacts.outputs.image_size_mb }} MB
+          - Compressed: ${{ steps.prepare-artifacts.outputs.zip_file || 'N/A' }}
+
+          Installation:
+          1. Download the .img file (or .zip and extract)
+          2. Flash to SD card (8GB+ recommended):
+             sudo dd if=${{ steps.prepare-artifacts.outputs.image_file }} of=/dev/sdX bs=4M status=progress conv=fsync
+          3. Insert SD card into Raspberry Pi 4
+          4. Power on and enjoy!
+
+          Default Credentials:
+          - Username: ${{ github.event.inputs.rpi_username || 'mapper' }}
+          - Password: ${{ github.event.inputs.rpi_password || 'projection' }}
+
+          IMPORTANT: Change the default password after first boot!
+
+          Documentation:
+          - Quick Start: https://github.com/${{ github.repository }}/blob/main/build-system/QUICKSTART.md
+          - Full Guide: https://github.com/${{ github.repository }}/blob/main/build-system/README.md
+
+          Support:
+          - Issues: https://github.com/${{ github.repository }}/issues
+          - Chat: https://gitter.im/kr15h/ofxPiMapper
+          EOF
+
+          cat BUILD_INFO.txt
+
+      #########################################################################
+      # Upload Artifacts
+      #########################################################################
+
+      - name: Upload image as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ofxpimapper-image
+          path: |
+            ${{ steps.prepare-artifacts.outputs.image_path }}
+            ${{ steps.prepare-artifacts.outputs.zip_path }}
+            ${{ steps.prepare-artifacts.outputs.sha_path }}
+            build-system/pi-gen-method/deploy/BUILD_INFO.txt
+            build-system/pi-gen-method/deploy/build.log
+          retention-days: 30
+          compression-level: 0  # Don't compress (image is already large)
+
+      #########################################################################
+      # Create Release (if triggered by release event)
+      #########################################################################
+
+      - name: Upload to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ${{ steps.prepare-artifacts.outputs.image_path }}
+            ${{ steps.prepare-artifacts.outputs.zip_path }}
+            ${{ steps.prepare-artifacts.outputs.sha_path }}
+            build-system/pi-gen-method/deploy/BUILD_INFO.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      #########################################################################
+      # Build Summary
+      #########################################################################
+
+      - name: Create build summary
+        if: always()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<EOF
+          # 🎉 ofxPiMapper Image Build Complete
+
+          ## Build Information
+
+          - **Build Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          - **Git Commit:** \`${{ github.sha }}\`
+          - **Workflow Run:** #${{ github.run_number }}
+
+          ## Configuration
+
+          | Setting | Value |
+          |---------|-------|
+          | Username | ${{ github.event.inputs.rpi_username || 'mapper' }} |
+          | Hostname | ${{ github.event.inputs.hostname || 'ofxpimapper' }} |
+          | Base Image | ${{ github.event.inputs.base_image || 'desktop' }} |
+          | openFrameworks | ${{ github.event.inputs.of_version || '0.12.0' }} |
+          | Auto-start | ${{ github.event.inputs.autostart_enabled || 'false' }} |
+
+          ## Build Artifacts
+
+          | File | Size |
+          |------|------|
+          | Image | ${{ steps.prepare-artifacts.outputs.image_size_mb }} MB |
+          | Compressed | ${{ steps.prepare-artifacts.outputs.zip_size_mb || 'N/A' }} MB |
+
+          ## Files
+
+          - \`${{ steps.prepare-artifacts.outputs.image_file }}\`
+          - \`${{ steps.prepare-artifacts.outputs.zip_file || 'N/A' }}\`
+          - \`${{ steps.prepare-artifacts.outputs.sha_file || 'N/A' }}\`
+
+          ## Next Steps
+
+          1. Download the image from the workflow artifacts
+          2. Extract the .zip file (if compressed)
+          3. Flash to SD card using:
+             \`\`\`bash
+             sudo dd if=${{ steps.prepare-artifacts.outputs.image_file }} of=/dev/sdX bs=4M status=progress conv=fsync
+             \`\`\`
+          4. Insert SD card into Raspberry Pi 4 and power on
+
+          ## Default Credentials
+
+          - **Username:** ${{ github.event.inputs.rpi_username || 'mapper' }}
+          - **Password:** ${{ github.event.inputs.rpi_password || 'projection' }}
+
+          ⚠️ **IMPORTANT:** Change the default password after first boot!
+
+          ## Documentation
+
+          - [Quick Start Guide](https://github.com/${{ github.repository }}/blob/main/build-system/QUICKSTART.md)
+          - [Full Documentation](https://github.com/${{ github.repository }}/blob/main/build-system/README.md)
+          - [Troubleshooting](https://github.com/${{ github.repository }}/blob/main/build-system/docs/TROUBLESHOOTING.md)
+          EOF
+
+      - name: Build status notification
+        if: failure()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<EOF
+          # ❌ Build Failed
+
+          The image build process failed. Please check the workflow logs for details.
+
+          Common issues:
+          - Insufficient disk space
+          - Network connectivity problems
+          - Package installation failures
+
+          See [Troubleshooting Guide](https://github.com/${{ github.repository }}/blob/main/build-system/docs/TROUBLESHOOTING.md) for solutions.
+          EOF

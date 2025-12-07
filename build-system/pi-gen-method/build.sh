@@ -311,104 +311,257 @@ chmod +x "${STAGE_DIR}/prerun.sh"
 
 # Stage 00: System Dependencies
 mkdir -p "${STAGE_DIR}/00-install-dependencies"
-mkdir -p "${STAGE_DIR}/00-install-dependencies/files"
 
-# Copy the dependencies installation script
-cp "${BUILD_SYSTEM_DIR}/scripts/install-dependencies.sh" \
-   "${STAGE_DIR}/00-install-dependencies/files/install-dependencies.sh"
-
-cat > "${STAGE_DIR}/00-install-dependencies/00-run.sh" <<'EOFRUN'
+cat > "${STAGE_DIR}/00-install-dependencies/00-run-chroot.sh" <<'EOFRUN'
 #!/bin/bash -e
 # Install system dependencies
 
-on_chroot << 'EOFCHROOT'
-# Run dependencies installation
-bash /tmp/install-dependencies.sh
-EOFCHROOT
+################################################################################
+# Update System
+################################################################################
+
+echo "[INFO] Updating package lists..."
+apt-get update -y
+
+echo "[INFO] Upgrading existing packages..."
+apt-get upgrade -y
+
+################################################################################
+# Install Build Essentials
+################################################################################
+
+echo "[INFO] Installing build essentials..."
+apt-get install -y \
+    build-essential \
+    git \
+    cmake \
+    pkg-config \
+    gdb \
+    ccache
+
+################################################################################
+# Install OpenGL and Graphics Libraries
+################################################################################
+
+echo "[INFO] Installing OpenGL ES and graphics libraries..."
+apt-get install -y \
+    libgles2-mesa-dev \
+    libglfw3-dev \
+    libegl1-mesa-dev \
+    mesa-utils \
+    libdrm-dev \
+    libgbm-dev
+
+################################################################################
+# Install GStreamer (Required for video playback)
+################################################################################
+
+echo "[INFO] Installing GStreamer and plugins..."
+apt-get install -y \
+    libgstreamer1.0-dev \
+    libgstreamer-plugins-base1.0-dev \
+    libgstreamer-plugins-good1.0-dev \
+    libgstreamer-plugins-bad1.0-dev \
+    gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad \
+    gstreamer1.0-plugins-ugly \
+    gstreamer1.0-libav \
+    gstreamer1.0-alsa \
+    gstreamer1.0-tools
+
+################################################################################
+# Install Audio Libraries
+################################################################################
+
+echo "[INFO] Installing audio libraries..."
+apt-get install -y \
+    libasound2-dev \
+    libpulse-dev \
+    alsa-utils \
+    pulseaudio \
+    libmpg123-dev \
+    libsndfile1-dev \
+    libfreeimage-dev
+
+################################################################################
+# Install Additional Libraries
+################################################################################
+
+echo "[INFO] Installing additional required libraries..."
+apt-get install -y \
+    libfreetype6-dev \
+    libfontconfig1-dev \
+    libcairo2-dev \
+    libglm-dev \
+    libxrandr-dev \
+    libxi-dev \
+    libxcursor-dev \
+    libxinerama-dev \
+    libxxf86vm-dev \
+    libxmu-dev \
+    libudev-dev \
+    libboost-all-dev \
+    libssl-dev \
+    libpoco-dev \
+    libpugixml-dev \
+    libgtk-3-dev \
+    libjpeg-dev \
+    libpng-dev \
+    libtiff-dev \
+    libavcodec-dev \
+    libavformat-dev \
+    libswscale-dev \
+    libv4l-dev \
+    libxvidcore-dev \
+    libx264-dev
+
+################################################################################
+# Install Utilities
+################################################################################
+
+echo "[INFO] Installing utilities..."
+apt-get install -y \
+    curl \
+    wget \
+    unzip \
+    rsync \
+    htop \
+    vim \
+    nano \
+    screen \
+    tmux \
+    net-tools \
+    wireless-tools
+
+################################################################################
+# Install Python (for some oF scripts)
+################################################################################
+
+echo "[INFO] Installing Python..."
+apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-dev
+
+################################################################################
+# Clean up
+################################################################################
+
+echo "[INFO] Cleaning up..."
+apt-get autoremove -y
+apt-get autoclean -y
+
+echo "[INFO] Dependency installation completed successfully!"
 EOFRUN
 
-chmod +x "${STAGE_DIR}/00-install-dependencies/00-run.sh"
+chmod +x "${STAGE_DIR}/00-install-dependencies/00-run-chroot.sh"
 
 # Stage 01: Configure X11
 mkdir -p "${STAGE_DIR}/01-configure-x11"
-mkdir -p "${STAGE_DIR}/01-configure-x11/files"
-
-cp "${BUILD_SYSTEM_DIR}/scripts/configure-x11.sh" \
-   "${STAGE_DIR}/01-configure-x11/files/configure-x11.sh"
 
 cat > "${STAGE_DIR}/01-configure-x11/00-run.sh" <<'EOFRUN'
 #!/bin/bash -e
-on_chroot << 'EOFCHROOT'
+# Copy configure-x11 script to rootfs
+install -m 755 -D files/configure-x11.sh "${ROOTFS_DIR}/tmp/configure-x11.sh"
+EOFRUN
+
+mkdir -p "${STAGE_DIR}/01-configure-x11/files"
+cp "${BUILD_SYSTEM_DIR}/scripts/configure-x11.sh" \
+   "${STAGE_DIR}/01-configure-x11/files/configure-x11.sh"
+
+cat > "${STAGE_DIR}/01-configure-x11/00-run-chroot.sh" <<'EOFRUN'
+#!/bin/bash -e
 bash /tmp/configure-x11.sh
-EOFCHROOT
 EOFRUN
 
 chmod +x "${STAGE_DIR}/01-configure-x11/00-run.sh"
+chmod +x "${STAGE_DIR}/01-configure-x11/00-run-chroot.sh"
 
 # Stage 02: Configure Auto-login
 mkdir -p "${STAGE_DIR}/02-configure-autologin"
-mkdir -p "${STAGE_DIR}/02-configure-autologin/files"
-
-cp "${BUILD_SYSTEM_DIR}/scripts/configure-autologin.sh" \
-   "${STAGE_DIR}/02-configure-autologin/files/configure-autologin.sh"
 
 cat > "${STAGE_DIR}/02-configure-autologin/00-run.sh" <<'EOFRUN'
 #!/bin/bash -e
-on_chroot << 'EOFCHROOT'
+# Copy configure-autologin script to rootfs
+install -m 755 -D files/configure-autologin.sh "${ROOTFS_DIR}/tmp/configure-autologin.sh"
+EOFRUN
+
+mkdir -p "${STAGE_DIR}/02-configure-autologin/files"
+cp "${BUILD_SYSTEM_DIR}/scripts/configure-autologin.sh" \
+   "${STAGE_DIR}/02-configure-autologin/files/configure-autologin.sh"
+
+cat > "${STAGE_DIR}/02-configure-autologin/00-run-chroot.sh" <<'EOFRUN'
+#!/bin/bash -e
 bash /tmp/configure-autologin.sh
-EOFCHROOT
 EOFRUN
 
 chmod +x "${STAGE_DIR}/02-configure-autologin/00-run.sh"
+chmod +x "${STAGE_DIR}/02-configure-autologin/00-run-chroot.sh"
 
 # Stage 03: Install openFrameworks
 mkdir -p "${STAGE_DIR}/03-install-openframeworks"
-mkdir -p "${STAGE_DIR}/03-install-openframeworks/files"
-
-cp "${BUILD_SYSTEM_DIR}/scripts/install-openframeworks.sh" \
-   "${STAGE_DIR}/03-install-openframeworks/files/install-openframeworks.sh"
 
 cat > "${STAGE_DIR}/03-install-openframeworks/00-run.sh" <<'EOFRUN'
 #!/bin/bash -e
-on_chroot << 'EOFCHROOT'
+# Copy install-openframeworks script to rootfs
+install -m 755 -D files/install-openframeworks.sh "${ROOTFS_DIR}/tmp/install-openframeworks.sh"
+EOFRUN
+
+mkdir -p "${STAGE_DIR}/03-install-openframeworks/files"
+cp "${BUILD_SYSTEM_DIR}/scripts/install-openframeworks.sh" \
+   "${STAGE_DIR}/03-install-openframeworks/files/install-openframeworks.sh"
+
+cat > "${STAGE_DIR}/03-install-openframeworks/00-run-chroot.sh" <<'EOFRUN'
+#!/bin/bash -e
 bash /tmp/install-openframeworks.sh
-EOFCHROOT
 EOFRUN
 
 chmod +x "${STAGE_DIR}/03-install-openframeworks/00-run.sh"
+chmod +x "${STAGE_DIR}/03-install-openframeworks/00-run-chroot.sh"
 
 # Stage 04: Install ofxPiMapper
 mkdir -p "${STAGE_DIR}/04-install-ofxpimapper"
-mkdir -p "${STAGE_DIR}/04-install-ofxpimapper/files"
-
-cp "${BUILD_SYSTEM_DIR}/scripts/install-ofxpimapper.sh" \
-   "${STAGE_DIR}/04-install-ofxpimapper/files/install-ofxpimapper.sh"
 
 cat > "${STAGE_DIR}/04-install-ofxpimapper/00-run.sh" <<'EOFRUN'
 #!/bin/bash -e
-on_chroot << 'EOFCHROOT'
+# Copy install-ofxpimapper script to rootfs
+install -m 755 -D files/install-ofxpimapper.sh "${ROOTFS_DIR}/tmp/install-ofxpimapper.sh"
+EOFRUN
+
+mkdir -p "${STAGE_DIR}/04-install-ofxpimapper/files"
+cp "${BUILD_SYSTEM_DIR}/scripts/install-ofxpimapper.sh" \
+   "${STAGE_DIR}/04-install-ofxpimapper/files/install-ofxpimapper.sh"
+
+cat > "${STAGE_DIR}/04-install-ofxpimapper/00-run-chroot.sh" <<'EOFRUN'
+#!/bin/bash -e
 bash /tmp/install-ofxpimapper.sh
-EOFCHROOT
 EOFRUN
 
 chmod +x "${STAGE_DIR}/04-install-ofxpimapper/00-run.sh"
+chmod +x "${STAGE_DIR}/04-install-ofxpimapper/00-run-chroot.sh"
 
 # Stage 05: Configure Auto-start
 if [ "${AUTOSTART_ENABLED}" = "true" ]; then
     mkdir -p "${STAGE_DIR}/05-configure-autostart"
-    mkdir -p "${STAGE_DIR}/05-configure-autostart/files"
-
-    cp "${BUILD_SYSTEM_DIR}/scripts/configure-autostart.sh" \
-       "${STAGE_DIR}/05-configure-autostart/files/configure-autostart.sh"
 
     cat > "${STAGE_DIR}/05-configure-autostart/00-run.sh" <<'EOFRUN'
 #!/bin/bash -e
-on_chroot << 'EOFCHROOT'
+# Copy configure-autostart script to rootfs
+install -m 755 -D files/configure-autostart.sh "${ROOTFS_DIR}/tmp/configure-autostart.sh"
+EOFRUN
+
+    mkdir -p "${STAGE_DIR}/05-configure-autostart/files"
+    cp "${BUILD_SYSTEM_DIR}/scripts/configure-autostart.sh" \
+       "${STAGE_DIR}/05-configure-autostart/files/configure-autostart.sh"
+
+    cat > "${STAGE_DIR}/05-configure-autostart/00-run-chroot.sh" <<'EOFRUN'
+#!/bin/bash -e
 bash /tmp/configure-autostart.sh
-EOFCHROOT
 EOFRUN
 
     chmod +x "${STAGE_DIR}/05-configure-autostart/00-run.sh"
+    chmod +x "${STAGE_DIR}/05-configure-autostart/00-run-chroot.sh"
 fi
 
 log_info "✓ Custom stage created"

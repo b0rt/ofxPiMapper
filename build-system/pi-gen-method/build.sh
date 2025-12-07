@@ -283,10 +283,10 @@ EOF
 # Determine which base stages to include
 if [ "$BASE_IMAGE" = "desktop" ]; then
     # Include desktop environment
-    sed -i 's/STAGE_LIST=.*/STAGE_LIST="stage0 stage1 stage2 stage3"/' "${PIGEN_DIR}/config"
+    sed -i 's/STAGE_LIST=.*/STAGE_LIST="stage0 stage1 stage2 stage3 stage4"/' "${PIGEN_DIR}/config"
 else
     # Lite version (no desktop)
-    sed -i 's/STAGE_LIST=.*/STAGE_LIST="stage0 stage1 stage3"/' "${PIGEN_DIR}/config"
+    sed -i 's/STAGE_LIST=.*/STAGE_LIST="stage0 stage1 stage2 stage4"/' "${PIGEN_DIR}/config"
 fi
 
 log_info "✓ pi-gen configured"
@@ -297,14 +297,14 @@ log_info "✓ pi-gen configured"
 
 log_progress "Creating custom ofxPiMapper installation stage..."
 
-STAGE_DIR="${PIGEN_DIR}/stage3"
+STAGE_DIR="${PIGEN_DIR}/stage4"
 rm -rf "$STAGE_DIR"
 mkdir -p "$STAGE_DIR"
 
 # Create prerun script
 cat > "${STAGE_DIR}/prerun.sh" <<'EOF'
 #!/bin/bash
-echo "Starting ofxPiMapper custom stage (stage3)..."
+echo "Starting ofxPiMapper custom stage (stage4)..."
 EOF
 
 chmod +x "${STAGE_DIR}/prerun.sh"
@@ -584,6 +584,9 @@ EOFRUN
     chmod +x "${STAGE_DIR}/05-configure-autostart/00-run.sh"
     chmod +x "${STAGE_DIR}/05-configure-autostart/00-run-chroot.sh"
 fi
+
+# Create EXPORT_IMAGE marker to tell pi-gen to export the final image from this stage
+touch "${STAGE_DIR}/EXPORT_IMAGE"
 
 log_info "✓ Custom stage created"
 

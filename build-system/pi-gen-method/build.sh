@@ -61,7 +61,7 @@ Options:
     --docker              Build using Docker (recommended, no root needed)
     --config FILE         Use custom configuration file
     --clean               Clean previous builds before starting
-    --stage STAGE         Build only up to specified stage (e.g., stage-ofxpimapper)
+    --stage STAGE         Build only up to specified stage (e.g., stage3)
     --help                Show this help message
 
 Examples:
@@ -277,16 +277,16 @@ TIMEZONE_DEFAULT="${TIMEZONE}"
 FIRST_USER_NAME="${RPI_USERNAME}"
 FIRST_USER_PASS="${RPI_PASSWORD}"
 ENABLE_SSH="${ENABLE_SSH}"
-STAGE_LIST="stage0 stage1 stage2 stage-ofxpimapper"
+STAGE_LIST="stage0 stage1 stage2 stage3"
 EOF
 
 # Determine which base stages to include
 if [ "$BASE_IMAGE" = "desktop" ]; then
     # Include desktop environment
-    sed -i 's/STAGE_LIST=.*/STAGE_LIST="stage0 stage1 stage2 stage-ofxpimapper"/' "${PIGEN_DIR}/config"
+    sed -i 's/STAGE_LIST=.*/STAGE_LIST="stage0 stage1 stage2 stage3"/' "${PIGEN_DIR}/config"
 else
     # Lite version (no desktop)
-    sed -i 's/STAGE_LIST=.*/STAGE_LIST="stage0 stage1 stage-ofxpimapper"/' "${PIGEN_DIR}/config"
+    sed -i 's/STAGE_LIST=.*/STAGE_LIST="stage0 stage1 stage3"/' "${PIGEN_DIR}/config"
 fi
 
 log_info "✓ pi-gen configured"
@@ -297,14 +297,14 @@ log_info "✓ pi-gen configured"
 
 log_progress "Creating custom ofxPiMapper installation stage..."
 
-STAGE_DIR="${PIGEN_DIR}/stage-ofxpimapper"
+STAGE_DIR="${PIGEN_DIR}/stage3"
 rm -rf "$STAGE_DIR"
 mkdir -p "$STAGE_DIR"
 
 # Create prerun script
 cat > "${STAGE_DIR}/prerun.sh" <<'EOF'
 #!/bin/bash
-echo "Starting ofxPiMapper custom stage..."
+echo "Starting ofxPiMapper custom stage (stage3)..."
 EOF
 
 chmod +x "${STAGE_DIR}/prerun.sh"
@@ -456,6 +456,27 @@ echo "[INFO] Dependency installation completed successfully!"
 EOFRUN
 
 chmod +x "${STAGE_DIR}/00-install-dependencies/00-run-chroot.sh"
+
+# Stage 00a: Configure Wireless and Bluetooth
+mkdir -p "${STAGE_DIR}/00a-configure-wireless-bluetooth"
+
+cat > "${STAGE_DIR}/00a-configure-wireless-bluetooth/00-run.sh" <<'EOFRUN'
+#!/bin/bash -e
+# Copy configure-wireless-bluetooth script to rootfs
+install -m 755 -D files/configure-wireless-bluetooth.sh "${ROOTFS_DIR}/tmp/configure-wireless-bluetooth.sh"
+EOFRUN
+
+mkdir -p "${STAGE_DIR}/00a-configure-wireless-bluetooth/files"
+cp "${BUILD_SYSTEM_DIR}/scripts/configure-wireless-bluetooth.sh" \
+   "${STAGE_DIR}/00a-configure-wireless-bluetooth/files/configure-wireless-bluetooth.sh"
+
+cat > "${STAGE_DIR}/00a-configure-wireless-bluetooth/00-run-chroot.sh" <<'EOFRUN'
+#!/bin/bash -e
+bash /tmp/configure-wireless-bluetooth.sh
+EOFRUN
+
+chmod +x "${STAGE_DIR}/00a-configure-wireless-bluetooth/00-run.sh"
+chmod +x "${STAGE_DIR}/00a-configure-wireless-bluetooth/00-run-chroot.sh"
 
 # Stage 01: Configure X11
 mkdir -p "${STAGE_DIR}/01-configure-x11"

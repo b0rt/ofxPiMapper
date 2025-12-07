@@ -4,6 +4,8 @@ This directory contains automated build scripts for generating bootable Raspberr
 
 ## Quick Start
 
+### Linux / macOS
+
 ```bash
 # Method A: Using pi-gen (Recommended)
 cd build-system/pi-gen-method
@@ -13,6 +15,31 @@ sudo ./build.sh
 cd build-system/packer-method
 ./build.sh
 ```
+
+### Windows (WSL2)
+
+**First time setup - IMPORTANT:**
+
+```bash
+# Configure Git to prevent line-ending issues
+git config --global core.autocrlf input
+git config --global core.eol lf
+
+# Install required packages
+sudo apt update
+sudo apt install -y git curl quilt parted qemu-user-static debootstrap zerofree \
+    zip dosfstools libarchive-tools libcap2-bin grep rsync xz-utils file bc qemu-utils kpartx
+
+# Clone repository in WSL2 native filesystem (not /mnt/c/)
+cd ~
+git clone https://github.com/b0rt/ofxPiMapper.git
+cd ofxPiMapper/build-system/pi-gen-method
+
+# Build
+sudo ./build.sh
+```
+
+**For detailed WSL2 setup and troubleshooting, see [docs/WSL2-SETUP.md](docs/WSL2-SETUP.md)**
 
 ## Overview
 
@@ -73,6 +100,13 @@ build-system/
 - 25GB free disk space
 - 4GB+ RAM
 - Packages: `git curl quilt parted qemu-user-static debootstrap zerofree zip dosfstools libarchive-tools libcap2-bin grep rsync xz-utils file git curl bc qemu-utils kpartx`
+
+### For Windows Users (WSL2)
+- **See detailed setup guide**: [docs/WSL2-SETUP.md](docs/WSL2-SETUP.md)
+- WSL2 with Ubuntu 22.04 recommended
+- 25GB free disk space in WSL2 filesystem
+- 8GB+ RAM allocated to WSL2
+- **Important**: Configure Git with `core.autocrlf=input` and `core.eol=lf` to prevent line-ending issues
 
 ### For Packer Method (Cross-platform)
 - Packer 1.8.0+

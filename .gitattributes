@@ -1,0 +1,60 @@
+# Git Attributes Configuration for ofxPiMapper
+# This file ensures consistent line endings across all platforms
+
+# Auto-detect text files and normalize to LF
+* text=auto eol=lf
+
+# Shell scripts must always use LF (Unix line endings)
+*.sh text eol=lf
+
+# Configuration files must use LF
+*.conf text eol=lf
+*.config text eol=lf
+
+# Documentation files
+*.md text eol=lf
+*.txt text eol=lf
+
+# Source code files
+*.cpp text eol=lf
+*.h text eol=lf
+*.hpp text eol=lf
+*.c text eol=lf
+
+# Build system files
+Makefile text eol=lf
+*.mk text eol=lf
+
+# Git files
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# Desktop files (Linux)
+*.desktop text eol=lf
+
+# Binary files - never modify
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.mov binary
+*.mp4 binary
+*.mp3 binary
+*.flv binary
+*.fla binary
+*.swf binary
+*.gz binary
+*.zip binary
+*.7z binary
+*.ttf binary
+*.eot binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+*.so binary
+*.a binary
+*.o binary
+*.dylib binary
+*.dll binary
+*.exe binary

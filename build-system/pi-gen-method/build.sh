@@ -280,14 +280,19 @@ ENABLE_SSH="${ENABLE_SSH}"
 STAGE_LIST="stage0 stage1 stage2 stage3"
 EOF
 
-# Determine which base stages to include
+# Determine which base stages to include and which stage to use for custom installation
 if [ "$BASE_IMAGE" = "desktop" ]; then
-    # Include desktop environment (stage3 required, then stage4 for desktop, then custom stage5)
+    # Desktop: include stage4 (desktop environment), then stage5 (custom ofxPiMapper)
     sed -i 's/STAGE_LIST=.*/STAGE_LIST="stage0 stage1 stage2 stage3 stage4 stage5"/' "${PIGEN_DIR}/config"
+    CUSTOM_STAGE="stage5"
 else
-    # Lite version (no desktop, but stage3 is REQUIRED for proper rootfs)
-    sed -i 's/STAGE_LIST=.*/STAGE_LIST="stage0 stage1 stage2 stage3 stage5"/' "${PIGEN_DIR}/config"
+    # Lite: use stage4 for custom ofxPiMapper (stage3 provides base, stage4 is our custom)
+    # We cannot skip to stage5 because pi-gen won't copy rootfs from stage3 to stage5
+    sed -i 's/STAGE_LIST=.*/STAGE_LIST="stage0 stage1 stage2 stage3 stage4"/' "${PIGEN_DIR}/config"
+    CUSTOM_STAGE="stage4"
 fi
+
+log_info "Using ${CUSTOM_STAGE} for custom ofxPiMapper installation"
 
 log_info "✓ pi-gen configured"
 
@@ -297,14 +302,14 @@ log_info "✓ pi-gen configured"
 
 log_progress "Creating custom ofxPiMapper installation stage..."
 
-STAGE_DIR="${PIGEN_DIR}/stage5"
+STAGE_DIR="${PIGEN_DIR}/${CUSTOM_STAGE}"
 rm -rf "$STAGE_DIR"
 mkdir -p "$STAGE_DIR"
 
 # Create prerun script
-cat > "${STAGE_DIR}/prerun.sh" <<'EOF'
+cat > "${STAGE_DIR}/prerun.sh" <<EOF
 #!/bin/bash
-echo "Starting ofxPiMapper custom stage (stage5)..."
+echo "Starting ofxPiMapper custom stage (${CUSTOM_STAGE})..."
 EOF
 
 chmod +x "${STAGE_DIR}/prerun.sh"

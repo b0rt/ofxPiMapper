@@ -280,36 +280,50 @@ ENABLE_SSH="${ENABLE_SSH}"
 STAGE_LIST="stage0 stage1 stage2 stage3"
 EOF
 
-# Determine which base stages to include and which stage to use for custom installation
+# Determine which base stages to include
 if [ "$BASE_IMAGE" = "desktop" ]; then
-    # Desktop: include stage4 (desktop environment), then stage5 (custom ofxPiMapper)
+    # Desktop: keep stage4 (desktop environment), add stage5 (custom ofxPiMapper)
     sed -i 's/STAGE_LIST=.*/STAGE_LIST="stage0 stage1 stage2 stage3 stage4 stage5"/' "${PIGEN_DIR}/config"
     CUSTOM_STAGE="stage5"
+    SKIP_STAGE4=false
 else
-    # Lite: use stage4 for custom ofxPiMapper (stage3 provides base, stage4 is our custom)
-    # We cannot skip to stage5 because pi-gen won't copy rootfs from stage3 to stage5
-    sed -i 's/STAGE_LIST=.*/STAGE_LIST="stage0 stage1 stage2 stage3 stage4"/' "${PIGEN_DIR}/config"
-    CUSTOM_STAGE="stage4"
+    # Lite: skip stage4 (desktop), use stage5 (custom ofxPiMapper)
+    sed -i 's/STAGE_LIST=.*/STAGE_LIST="stage0 stage1 stage2 stage3 stage4 stage5"/' "${PIGEN_DIR}/config"
+    CUSTOM_STAGE="stage5"
+    SKIP_STAGE4=true
 fi
 
-log_info "Using ${CUSTOM_STAGE} for custom ofxPiMapper installation"
+log_info "Using ${CUSTOM_STAGE} for custom ofxPiMapper installation (skip stage4: ${SKIP_STAGE4})"
 
 log_info "✓ pi-gen configured"
+
+################################################################################
+# Skip stage4 for lite builds
+################################################################################
+
+if [ "$SKIP_STAGE4" = true ]; then
+    log_info "Creating SKIP marker for stage4 (lite build, no desktop)"
+    touch "${PIGEN_DIR}/stage4/SKIP"
+fi
 
 ################################################################################
 # Create Custom ofxPiMapper Stage
 ################################################################################
 
-log_progress "Creating custom ofxPiMapper installation stage..."
+log_progress "Creating custom ofxPiMapper installation stage (${CUSTOM_STAGE})..."
 
-STAGE_DIR="${PIGEN_DIR}/${CUSTOM_STAGE}"
-rm -rf "$STAGE_DIR"
+# Always use stage5 for custom installation
+# For desktop: stage4 has desktop, stage5 has custom
+# For lite: stage4 is SKIPPED, stage5 has custom
+STAGE_DIR="${PIGEN_DIR}/stage5"
+
+# Create stage5 directory (don't delete - it doesn't exist in default pi-gen)
 mkdir -p "$STAGE_DIR"
 
 # Create prerun script
-cat > "${STAGE_DIR}/prerun.sh" <<EOF
+cat > "${STAGE_DIR}/prerun.sh" <<'EOF'
 #!/bin/bash
-echo "Starting ofxPiMapper custom stage (${CUSTOM_STAGE})..."
+echo "Starting ofxPiMapper custom installation stage (stage5)..."
 EOF
 
 chmod +x "${STAGE_DIR}/prerun.sh"

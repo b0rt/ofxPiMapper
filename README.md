@@ -1,24 +1,11 @@
-# ofxPiMapper
+# ofxPiMapper [experimental unstable Fork]
+
 
 [![Join the chat at https://gitter.im/kr15h/ofxPiMapper](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/kr15h/ofxPiMapper?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge) [![Build Status](https://travis-ci.org/kr15h/ofxPiMapper.svg?branch=master)](https://travis-ci.org/kr15h/ofxPiMapper) [![Build status](https://ci.appveyor.com/api/projects/status/j6mn85tt2agk4dk6?svg=true)](https://ci.appveyor.com/project/kr15h/ofxpimapper)
 
 ## Notes on this fork
 
-A number of features are being added as branches to this repository, most significantly a GLES2 implementation of the original ofxPiMapper project. Compatibility is being maintained with the GLES1 code path. The motivation for this was originally to support edge blending (via shaders), but this also opens up the possibility of using shaders in general.
-
-The ofxGUI dependency has been removed and replaced with a custom solution in the GLES2 mode, largely because of this bug - https://github.com/openframeworks/openFrameworks/issues/6594
-
-Features currently not in upstream ofxPiMapper:
-
-- GLES2 renderer
-- edge blending (via shaders)
-- video playback synchronisation (using ofxVideoSync, works on multiple RPI's connected via LAN), this requires my custom [branch](https://github.com/pierrep/ofxOMXPlayer/tree/SeekingFix) of ofxOMXPlayer
-- A texture based GUI which renders much faster than the current drawn one on GLES 2, and is probably faster on GLES1 too.
-- ~~Ability to force a quad to go full screen~~ (this has been upstreamed)
-
-Development in this fork is generously supported by:
-
-[SEHNERV.org](https://sehnerv.org) - Verein zur Förderung von Medienkunst 
+> i am trying to vibe code stuff
 
 ## About this Project
 

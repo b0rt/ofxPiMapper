@@ -376,6 +376,9 @@ fi
 
 echo "[INFO] Copying rootfs from ${SOURCE_ROOTFS} to stage5..."
 
+# Create target directory structure (pi-gen doesn't create work dirs for custom stages)
+mkdir -p "${ROOTFS_DIR}"
+
 # Copy rootfs using rsync (traditional pi-gen method)
 rsync -aHAXx \
     --exclude /var/cache/apt/archives \

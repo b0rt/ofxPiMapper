@@ -615,9 +615,12 @@ mkdir -p "${STAGE_DIR}/03-install-openframeworks/files"
 cp "${BUILD_SYSTEM_DIR}/scripts/install-openframeworks.sh" \
    "${STAGE_DIR}/03-install-openframeworks/files/install-openframeworks.sh"
 
-cat > "${STAGE_DIR}/03-install-openframeworks/00-run-chroot.sh" <<'EOFRUN'
+cat > "${STAGE_DIR}/03-install-openframeworks/00-run-chroot.sh" <<EOFRUN
 #!/bin/bash -e
-# OF_VERSION is set from build configuration
+# Export openFrameworks configuration from build config
+export OF_VERSION="${OF_VERSION}"
+export OF_PLATFORM="${OF_PLATFORM}"
+export OF_ROOT="${OF_ROOT}"
 bash /tmp/install-openframeworks.sh
 EOFRUN
 

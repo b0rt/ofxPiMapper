@@ -167,23 +167,31 @@ fi
 # Compile openFrameworks Core
 ################################################################################
 
-log_progress "Compiling openFrameworks core libraries..."
-log_info "This may take 30-60 minutes depending on your hardware..."
+log_progress "Checking for precompiled libraries..."
 
-cd "${OF_ROOT}/libs/openFrameworksCompiled/project"
-
-# Clean any previous builds
-sudo -u "$TARGET_USER" make clean || true
-
-# Compile with progress indicator
-log_info "Compiling with ${PARALLEL_JOBS} parallel jobs..."
-
-if sudo -u "$TARGET_USER" make -j${PARALLEL_JOBS} 2>&1 | tee /tmp/of_compile.log; then
-    log_info "openFrameworks core compiled successfully!"
+# Check if libraries are already compiled (common for release packages)
+if [ -f "${OF_ROOT}/libs/openFrameworksCompiled/lib/${OF_PLATFORM}/libopenFrameworks.a" ]; then
+    log_info "✓ Precompiled libraries found for ${OF_PLATFORM}"
+    log_info "Skipping compilation step (using release package libraries)"
 else
-    log_error "openFrameworks compilation failed. Check /tmp/of_compile.log for details"
-    tail -n 50 /tmp/of_compile.log
-    exit 1
+    log_progress "Compiling openFrameworks core libraries..."
+    log_info "This may take 30-60 minutes depending on your hardware..."
+
+    cd "${OF_ROOT}/libs/openFrameworksCompiled/project"
+
+    # Clean any previous builds
+    sudo -u "$TARGET_USER" make clean || true
+
+    # Compile with progress indicator
+    log_info "Compiling with ${PARALLEL_JOBS} parallel jobs..."
+
+    if sudo -u "$TARGET_USER" make -j${PARALLEL_JOBS} 2>&1 | tee /tmp/of_compile.log; then
+        log_info "openFrameworks core compiled successfully!"
+    else
+        log_error "openFrameworks compilation failed. Check /tmp/of_compile.log for details"
+        tail -n 50 /tmp/of_compile.log
+        exit 1
+    fi
 fi
 
 ################################################################################

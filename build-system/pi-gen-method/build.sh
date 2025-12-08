@@ -298,12 +298,24 @@ log_info "Using ${CUSTOM_STAGE} for custom ofxPiMapper installation (skip stage4
 log_info "✓ pi-gen configured"
 
 ################################################################################
-# Skip stage4 for lite builds
+# Prepare stage4 for lite builds (pass-through without desktop packages)
 ################################################################################
 
 if [ "$SKIP_STAGE4" = true ]; then
-    log_info "Creating SKIP marker for stage4 (lite build, no desktop)"
-    touch "${PIGEN_DIR}/stage4/SKIP"
+    log_info "Configuring stage4 as pass-through for lite build (removing desktop scripts)"
+
+    # Remove all desktop installation scripts from stage4
+    # Keep the stage4 directory intact so pi-gen can copy rootfs through it
+    find "${PIGEN_DIR}/stage4" -mindepth 1 -maxdepth 1 -type d -name '[0-9][0-9]-*' -exec rm -rf {} \;
+
+    # Create a minimal prerun.sh to indicate this stage is processed
+    cat > "${PIGEN_DIR}/stage4/prerun.sh" <<'EOF'
+#!/bin/bash
+echo "Stage4 pass-through for lite build (no desktop packages)..."
+EOF
+    chmod +x "${PIGEN_DIR}/stage4/prerun.sh"
+
+    log_info "Stage4 configured as pass-through (rootfs will be copied to stage5)"
 fi
 
 ################################################################################

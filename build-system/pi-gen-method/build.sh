@@ -332,10 +332,30 @@ STAGE_DIR="${PIGEN_DIR}/stage5"
 # Create stage5 directory (don't delete - it doesn't exist in default pi-gen)
 mkdir -p "$STAGE_DIR"
 
-# Create prerun script
+# Create prerun script that copies rootfs from stage4
+# This is CRITICAL - without this, stage5 won't have a rootfs to chroot into!
 cat > "${STAGE_DIR}/prerun.sh" <<'EOF'
 #!/bin/bash
-echo "Starting ofxPiMapper custom installation stage (stage5)..."
+set -e
+
+echo "===== Starting ofxPiMapper custom installation stage (stage5) ====="
+echo "[INFO] Copying rootfs from stage4 to stage5..."
+
+# Copy previous stage's rootfs to this stage
+# This is how pi-gen traditionally handles rootfs between custom stages
+if [ -d "${PREV_ROOTFS_DIR}" ]; then
+    rsync -aHAXx \
+        --exclude /var/cache/apt/archives \
+        --exclude /boot/firmware \
+        "${PREV_ROOTFS_DIR}/" \
+        "${ROOTFS_DIR}/"
+    echo "[INFO] Rootfs copied successfully ($(du -sh "${ROOTFS_DIR}" | cut -f1))"
+else
+    echo "[ERROR] Previous rootfs not found: ${PREV_ROOTFS_DIR}"
+    exit 1
+fi
+
+echo "[INFO] Ready to install ofxPiMapper dependencies..."
 EOF
 
 chmod +x "${STAGE_DIR}/prerun.sh"

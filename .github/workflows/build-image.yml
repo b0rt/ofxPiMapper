@@ -36,10 +36,6 @@ on:
         options:
           - 'lite'
           - 'desktop'
-      of_version:
-        description: 'openFrameworks version'
-        required: false
-        default: '0.12.0'
       compress_image:
         description: 'Compress final image'
         required: false
@@ -116,9 +112,6 @@ jobs:
 
           # Base image
           BASE_IMAGE="${{ github.event.inputs.base_image || 'desktop' }}"
-
-          # openFrameworks version
-          OF_VERSION="${{ github.event.inputs.of_version || '0.12.0' }}"
 
           # Auto-start
           AUTOSTART_ENABLED="${{ github.event.inputs.autostart_enabled || 'false' }}"
@@ -215,7 +208,6 @@ jobs:
           - Username: ${{ github.event.inputs.rpi_username || 'mapper' }}
           - Hostname: ${{ github.event.inputs.hostname || 'ofxpimapper' }}
           - Base Image: ${{ github.event.inputs.base_image || 'desktop' }}
-          - openFrameworks: ${{ github.event.inputs.of_version || '0.12.0' }}
           - Auto-start: ${{ github.event.inputs.autostart_enabled || 'false' }}
 
           Image Details:
@@ -303,7 +295,6 @@ jobs:
           | Username | ${{ github.event.inputs.rpi_username || 'mapper' }} |
           | Hostname | ${{ github.event.inputs.hostname || 'ofxpimapper' }} |
           | Base Image | ${{ github.event.inputs.base_image || 'desktop' }} |
-          | openFrameworks | ${{ github.event.inputs.of_version || '0.12.0' }} |
           | Auto-start | ${{ github.event.inputs.autostart_enabled || 'false' }} |
 
           ## Build Artifacts

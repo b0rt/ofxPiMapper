@@ -344,29 +344,46 @@ STAGE_DIR="${PIGEN_DIR}/stage5"
 # Create stage5 directory (don't delete - it doesn't exist in default pi-gen)
 mkdir -p "$STAGE_DIR"
 
-# Create prerun script that copies rootfs from stage4
+# Create prerun script that copies rootfs from previous stage (with fallback)
 # This is CRITICAL - without this, stage5 won't have a rootfs to chroot into!
 cat > "${STAGE_DIR}/prerun.sh" <<'EOF'
 #!/bin/bash
 set -e
 
 echo "===== Starting ofxPiMapper custom installation stage (stage5) ====="
-echo "[INFO] Copying rootfs from stage4 to stage5..."
 
-# Copy previous stage's rootfs to this stage
-# This is how pi-gen traditionally handles rootfs between custom stages
-if [ -d "${PREV_ROOTFS_DIR}" ]; then
-    rsync -aHAXx \
-        --exclude /var/cache/apt/archives \
-        --exclude /boot/firmware \
-        "${PREV_ROOTFS_DIR}/" \
-        "${ROOTFS_DIR}/"
-    echo "[INFO] Rootfs copied successfully ($(du -sh "${ROOTFS_DIR}" | cut -f1))"
+# Determine which stage to copy rootfs from
+# Try stage4 first (for desktop builds or if stage4 completed)
+# Fall back to stage3 (for lite builds where stage4 didn't create rootfs)
+SOURCE_ROOTFS=""
+
+if [ -d "${PREV_ROOTFS_DIR}" ] && [ -n "$(ls -A "${PREV_ROOTFS_DIR}" 2>/dev/null)" ]; then
+    SOURCE_ROOTFS="${PREV_ROOTFS_DIR}"
+    echo "[INFO] Using stage4 rootfs: ${PREV_ROOTFS_DIR}"
 else
-    echo "[ERROR] Previous rootfs not found: ${PREV_ROOTFS_DIR}"
-    exit 1
+    # Fallback to stage3 for lite builds
+    STAGE3_ROOTFS="$(dirname "$(dirname "${PREV_ROOTFS_DIR}")")/stage3/rootfs"
+    if [ -d "${STAGE3_ROOTFS}" ] && [ -n "$(ls -A "${STAGE3_ROOTFS}" 2>/dev/null)" ]; then
+        SOURCE_ROOTFS="${STAGE3_ROOTFS}"
+        echo "[WARNING] Stage4 rootfs not found, falling back to stage3: ${STAGE3_ROOTFS}"
+    else
+        echo "[ERROR] Neither stage4 nor stage3 rootfs found!"
+        echo "[ERROR] Tried: ${PREV_ROOTFS_DIR}"
+        echo "[ERROR] Tried: ${STAGE3_ROOTFS}"
+        exit 1
+    fi
 fi
 
+echo "[INFO] Copying rootfs from ${SOURCE_ROOTFS} to stage5..."
+
+# Copy rootfs using rsync (traditional pi-gen method)
+rsync -aHAXx \
+    --exclude /var/cache/apt/archives \
+    --exclude /boot/firmware \
+    "${SOURCE_ROOTFS}/" \
+    "${ROOTFS_DIR}/"
+
+echo "[INFO] Rootfs copied successfully ($(du -sh "${ROOTFS_DIR}" | cut -f1))"
 echo "[INFO] Ready to install ofxPiMapper dependencies..."
 EOF
 

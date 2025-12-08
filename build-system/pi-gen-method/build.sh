@@ -315,7 +315,19 @@ echo "Stage4 pass-through for lite build (no desktop packages)..."
 EOF
     chmod +x "${PIGEN_DIR}/stage4/prerun.sh"
 
-    log_info "Stage4 configured as pass-through (rootfs will be copied to stage5)"
+    # CRITICAL: Add a dummy script directory so pi-gen creates work/stage4/rootfs
+    # Without at least one script directory, pi-gen won't set up the stage's work directory
+    mkdir -p "${PIGEN_DIR}/stage4/00-pass-through"
+    cat > "${PIGEN_DIR}/stage4/00-pass-through/00-run.sh" <<'EOF'
+#!/bin/bash
+# Dummy script to ensure pi-gen creates work/stage4/rootfs
+# This stage does nothing but allows rootfs to pass through to stage5
+echo "[INFO] Stage4 pass-through: No packages to install (lite build)"
+exit 0
+EOF
+    chmod +x "${PIGEN_DIR}/stage4/00-pass-through/00-run.sh"
+
+    log_info "Stage4 configured as pass-through with dummy script (rootfs will be created and passed to stage5)"
 fi
 
 ################################################################################

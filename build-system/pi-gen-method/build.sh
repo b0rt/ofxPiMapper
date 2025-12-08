@@ -616,6 +616,9 @@ cp "${BUILD_SYSTEM_DIR}/scripts/install-openframeworks.sh" \
 
 cat > "${STAGE_DIR}/03-install-openframeworks/00-run-chroot.sh" <<'EOFRUN'
 #!/bin/bash -e
+# Use openFrameworks 0.11.2 (last version with 32-bit ARM support)
+# Version 0.12.0+ only supports 64-bit ARM (linuxaarch64)
+export OF_VERSION=0.11.2
 bash /tmp/install-openframeworks.sh
 EOFRUN
 

@@ -70,9 +70,12 @@ if ! wget -q --show-progress -O "${DOWNLOAD_DIR}/of.tar.gz" "${OF_DOWNLOAD_URL}"
     log_error "Failed to download openFrameworks"
     log_info "Trying alternative download method..."
 
-    # Try curl as fallback
-    if ! curl -L -o "${DOWNLOAD_DIR}/of.tar.gz" "${OF_DOWNLOAD_URL}"; then
+    # Try curl as fallback with proper error handling
+    if ! curl -fL --retry 3 --retry-delay 5 -o "${DOWNLOAD_DIR}/of.tar.gz" "${OF_DOWNLOAD_URL}"; then
         log_error "Download failed with both wget and curl"
+        log_error "Attempted URL: ${OF_DOWNLOAD_URL}"
+        log_info "Please check if this version/platform exists at:"
+        log_info "https://github.com/openframeworks/openFrameworks/releases/tag/${OF_VERSION}"
         rm -rf "$DOWNLOAD_DIR"
         exit 1
     fi

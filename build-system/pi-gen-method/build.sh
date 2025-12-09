@@ -470,7 +470,23 @@ Acquire::AllowDowngradeToInsecureRepositories "true";
 EOFAPT
 
 echo "[GPG-FIX]   ✓ Created /etc/apt/apt.conf.d/99allow-unsigned"
-echo "[GPG-FIX]   This configuration will be removed in later stages after proper key installation"
+
+# Method 6: Modify sources.list to add [trusted=yes] option
+# This explicitly tells apt to trust debian.org repos even without valid signatures
+echo "[GPG-FIX] Modifying sources.list to mark debian.org repositories as trusted..."
+
+if [ -f /etc/apt/sources.list ]; then
+    # Add [trusted=yes] to debian.org entries (if not already present)
+    sed -i 's|^\(deb \)\(http://deb.debian.org\)|\1[trusted=yes] \2|g' /etc/apt/sources.list
+    sed -i 's|^\(deb \)\(http://security.debian.org\)|\1[trusted=yes] \2|g' /etc/apt/sources.list
+    sed -i 's|^\(deb-src \)\(http://deb.debian.org\)|\1[trusted=yes] \2|g' /etc/apt/sources.list
+    sed -i 's|^\(deb-src \)\(http://security.debian.org\)|\1[trusted=yes] \2|g' /etc/apt/sources.list
+
+    # Show the modified sources.list
+    echo "[GPG-FIX]   ✓ Added [trusted=yes] to debian.org entries"
+    echo "[GPG-FIX]   Modified sources.list contents:"
+    cat /etc/apt/sources.list | grep -v '^#' | grep -v '^$' || true
+fi
 
 echo "[GPG-FIX] GPG key import completed"
 echo "[GPG-FIX] Keyrings in /usr/share/keyrings:"

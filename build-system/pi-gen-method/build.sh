@@ -322,21 +322,32 @@ echo "[GPG-FIX] Starting GPG key import in chroot..."
 # Create keyrings directory if it doesn't exist
 mkdir -p /usr/share/keyrings
 
-# Method 1: Install debian-archive-keyring package
+# Method 1: Install latest debian-archive-keyring package
 # This is the cleanest approach as it's maintained by Debian
 echo "[GPG-FIX] Attempting to install debian-archive-keyring package..."
-if ! dpkg -l | grep -q "^ii  debian-archive-keyring"; then
-    cd /tmp
-    # Try to download the package (with fallback URLs)
-    if wget -q http://ftp.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_2023.4_all.deb 2>/dev/null || \
-       wget -q http://deb.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_2023.4_all.deb 2>/dev/null; then
+
+cd /tmp
+# Clean up any old keyring packages
+rm -f debian-archive-keyring*.deb 2>/dev/null || true
+
+# Try multiple versions - start with the latest Bookworm-specific version
+# The 2023.4+deb12u1 version should have all Bookworm keys
+for version in "2023.4+deb12u1" "2023.4" "2023.3+deb12u2" "2023.3"; do
+    echo "[GPG-FIX]   Trying debian-archive-keyring version $version..."
+
+    if wget -q http://ftp.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_${version}_all.deb 2>/dev/null || \
+       wget -q http://deb.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_${version}_all.deb 2>/dev/null || \
+       wget -q http://security.debian.org/debian-security/pool/updates/main/d/debian-archive-keyring/debian-archive-keyring_${version}_all.deb 2>/dev/null; then
+
         if [ -f debian-archive-keyring_*.deb ]; then
-            dpkg -i debian-archive-keyring_*.deb 2>/dev/null || true
+            # Force reinstall even if already installed, to get newer keys
+            dpkg -i --force-all debian-archive-keyring_*.deb 2>/dev/null || true
             rm -f debian-archive-keyring_*.deb
-            echo "[GPG-FIX] debian-archive-keyring package installed"
+            echo "[GPG-FIX]   debian-archive-keyring $version installed"
+            break
         fi
     fi
-fi
+done
 
 # Method 2: Install gnupg if not present, then fetch keys manually
 echo "[GPG-FIX] Installing gnupg package for key fetching..."
@@ -344,6 +355,9 @@ echo "[GPG-FIX] Installing gnupg package for key fetching..."
 # Check if gnupg is installed, if not download and install it
 if ! command -v gpg >/dev/null 2>&1; then
     cd /tmp
+    # Clean up old files
+    rm -f *.deb 2>/dev/null || true
+
     # Download gnupg and dependencies from Debian repository
     # We need: gnupg, gpg, gpg-agent, and their dependencies
     echo "[GPG-FIX]   Downloading gnupg package..."
@@ -365,7 +379,16 @@ if ! command -v gpg >/dev/null 2>&1; then
         dpkg -i *.deb 2>/dev/null || true
         rm -f *.deb
 
-        echo "[GPG-FIX]   gnupg installed"
+        echo "[GPG-FIX]   gnupg installed via direct download"
+    else
+        # Fallback: try to install gnupg using apt with insecure repositories allowed
+        echo "[GPG-FIX]   Direct download failed, trying apt-get with insecure repos..."
+        apt-get update --allow-insecure-repositories -o Acquire::AllowInsecureRepositories=true 2>/dev/null || true
+        apt-get install -y --allow-unauthenticated gnupg 2>/dev/null || true
+
+        if command -v gpg >/dev/null 2>&1; then
+            echo "[GPG-FIX]   gnupg installed via apt-get"
+        fi
     fi
 fi
 

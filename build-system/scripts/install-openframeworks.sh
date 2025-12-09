@@ -179,13 +179,24 @@ else
 
     cd "${OF_ROOT}/libs/openFrameworksCompiled/project"
 
-    # Clean any previous builds
-    sudo -u "$TARGET_USER" make clean || true
+    # Ensure platform-specific directories exist
+    mkdir -p "${OF_ROOT}/libs/openFrameworksCompiled/lib/${OF_PLATFORM}"
+    mkdir -p "${OF_ROOT}/libs/openFrameworksCompiled/project/${OF_PLATFORM}"
+
+    # Set platform environment variables for makefile
+    export PLATFORM_OS=Linux
+    export PLATFORM_ARCH=$(uname -m)
+    export PLATFORM_LIB_SUBPATH="${OF_PLATFORM}"
+
+    log_info "Platform detection: OS=${PLATFORM_OS}, ARCH=${PLATFORM_ARCH}, LIB_SUBPATH=${PLATFORM_LIB_SUBPATH}"
+
+    # Clean any previous builds (use -E to preserve environment)
+    sudo -E -u "$TARGET_USER" make clean || true
 
     # Compile with progress indicator
     log_info "Compiling with ${PARALLEL_JOBS} parallel jobs..."
 
-    if sudo -u "$TARGET_USER" make -j${PARALLEL_JOBS} 2>&1 | tee /tmp/of_compile.log; then
+    if sudo -E -u "$TARGET_USER" make -j${PARALLEL_JOBS} 2>&1 | tee /tmp/of_compile.log; then
         log_info "openFrameworks core compiled successfully!"
     else
         log_error "openFrameworks compilation failed. Check /tmp/of_compile.log for details"

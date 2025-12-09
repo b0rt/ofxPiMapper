@@ -291,26 +291,28 @@ APT_PROXY=""
 EOF
 
 # Add GPG key import to stage0 (fixes Debian Bookworm arm64 key issues)
-# This patches the existing 00-run.sh to import keys BEFORE apt update
-log_info "Patching stage0 apt configuration to import GPG keys..."
+# Create a separate script that runs BEFORE 00-run.sh to import keys
+log_info "Adding GPG key import script to stage0..."
 
 # Wait a moment for git operations to complete
 sleep 2
 
-# Create a patched version of stage0/00-configure-apt/00-run.sh
-cat > "${PIGEN_DIR}/stage0/00-configure-apt/00-run.sh" <<'EOFRUN'
+# Create a new script that runs alphabetically before 00-run.sh
+# (00-import-gpg-keys.sh comes before 00-run.sh)
+cat > "${PIGEN_DIR}/stage0/00-configure-apt/00-import-gpg-keys.sh" <<'EOFKEYS'
 #!/bin/bash -e
 
-# Import Debian Bookworm GPG keys before apt update
+# Import Debian Bookworm GPG keys before apt configuration
 # This fixes signature verification errors on arm64 builds
-on_chroot << EOFKEYS
+
+on_chroot << EOF
 echo "Importing Debian Bookworm GPG keys..."
 
-# Install gnupg if not present
+# Install gnupg if not present (allow insecure repos temporarily)
 apt-get update --allow-insecure-repositories || true
 apt-get install -y --allow-unauthenticated gnupg || true
 
-# Import keys directly into apt's keyring
+# Import all required Debian Bookworm keys
 apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 6ED0E7B82643E131 || true
 apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 78DBA3BC47EF2265 || true
 apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys F8D2585B8783D481 || true
@@ -318,20 +320,12 @@ apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 54404762BBB6E8
 apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys BDE6D2B9216EC7A8 || true
 apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 0E98404D386FA1D9 || true
 
-echo "GPG keys imported"
+echo "GPG keys imported successfully"
+EOF
 EOFKEYS
 
-# Now run normal apt configuration
-install -m 644 files/sources.list "${ROOTFS_DIR}/etc/apt/sources.list"
-install -m 644 files/raspi.list "${ROOTFS_DIR}/etc/apt/sources.list.d/raspi.list"
-
-on_chroot <<EOF
-apt-get update
-apt-get dist-upgrade -y
-EOF
-EOFRUN
-
-chmod +x "${PIGEN_DIR}/stage0/00-configure-apt/00-run.sh"
+chmod +x "${PIGEN_DIR}/stage0/00-configure-apt/00-import-gpg-keys.sh"
+log_info "GPG key import script created and will run before apt configuration"
 
 # Determine which base stages to include
 if [ "$BASE_IMAGE" = "desktop" ]; then

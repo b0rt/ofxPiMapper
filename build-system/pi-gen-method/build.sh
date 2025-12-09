@@ -338,42 +338,78 @@ if ! dpkg -l | grep -q "^ii  debian-archive-keyring"; then
     fi
 fi
 
-# Method 2: Manual GPG key import (fallback)
-# Fetch keys directly and save to trusted keyring directory
-echo "[GPG-FIX] Ensuring all required GPG keys are present via manual import..."
+# Method 2: Install gnupg if not present, then fetch keys manually
+echo "[GPG-FIX] Installing gnupg package for key fetching..."
 
-export GNUPGHOME=/tmp/gpg-temp-$$
-mkdir -p "$GNUPGHOME"
-chmod 700 "$GNUPGHOME"
+# Check if gnupg is installed, if not download and install it
+if ! command -v gpg >/dev/null 2>&1; then
+    cd /tmp
+    # Download gnupg and dependencies from Debian repository
+    # We need: gnupg, gpg, gpg-agent, and their dependencies
+    echo "[GPG-FIX]   Downloading gnupg package..."
 
-# Function to fetch and install a GPG key
-fetch_key() {
-    local keyid=$1
-    local keyname=$2
-    echo "[GPG-FIX]   Fetching key $keyid ($keyname)..."
+    # Try to download gnupg package
+    if wget -q http://ftp.debian.org/debian/pool/main/g/gnupg2/gnupg_2.2.40-1.1_all.deb 2>/dev/null || \
+       wget -q http://deb.debian.org/debian/pool/main/g/gnupg2/gnupg_2.2.40-1.1_all.deb 2>/dev/null; then
 
-    # Try multiple keyservers for reliability
-    for server in keyserver.ubuntu.com keys.openpgp.org pgp.mit.edu; do
-        if gpg --batch --keyserver hkp://$server:80 --recv-keys $keyid 2>/dev/null; then
-            gpg --batch --export $keyid | gpg --dearmor > /usr/share/keyrings/debian-$keyname-keyring.gpg 2>/dev/null
-            echo "[GPG-FIX]     ✓ Key $keyid installed"
-            return 0
-        fi
-    done
-    echo "[GPG-FIX]     ⚠ Could not fetch key $keyid (may already exist in keyring)"
-    return 1
-}
+        # Also need gpg binary package
+        wget -q http://ftp.debian.org/debian/pool/main/g/gnupg2/gpg_2.2.40-1.1+deb12u1_arm64.deb 2>/dev/null || \
+        wget -q http://deb.debian.org/debian/pool/main/g/gnupg2/gpg_2.2.40-1.1+deb12u1_arm64.deb 2>/dev/null || true
 
-# Import all required Debian Bookworm signing keys
-fetch_key "6ED0E7B82643E131" "bookworm-release"
-fetch_key "78DBA3BC47EF2265" "bookworm-stable"
-fetch_key "F8D2585B8783D481" "bookworm-archive"
-fetch_key "54404762BBB6E853" "bookworm-security-1"
-fetch_key "BDE6D2B9216EC7A8" "bookworm-security-2"
-fetch_key "0E98404D386FA1D9" "bookworm-automatic"
+        # Need dependencies: libassuan, libksba, libnpth
+        wget -q http://ftp.debian.org/debian/pool/main/liba/libassuan/libassuan0_2.5.5-5_arm64.deb 2>/dev/null || true
+        wget -q http://ftp.debian.org/debian/pool/main/libk/libksba/libksba8_1.6.3-2_arm64.deb 2>/dev/null || true
+        wget -q http://ftp.debian.org/debian/pool/main/n/npth/libnpth0_1.6-3_arm64.deb 2>/dev/null || true
 
-# Clean up
-rm -rf "$GNUPGHOME"
+        # Install packages (ignoring dependency errors - we just need gpg command)
+        dpkg -i *.deb 2>/dev/null || true
+        rm -f *.deb
+
+        echo "[GPG-FIX]   gnupg installed"
+    fi
+fi
+
+# Method 3: Fetch keys using gpg (if available) or download directly
+echo "[GPG-FIX] Ensuring all required GPG keys are present..."
+
+if command -v gpg >/dev/null 2>&1; then
+    # gpg is available, fetch from keyservers
+    export GNUPGHOME=/tmp/gpg-temp-$$
+    mkdir -p "$GNUPGHOME"
+    chmod 700 "$GNUPGHOME"
+
+    # Function to fetch and install a GPG key
+    fetch_key() {
+        local keyid=$1
+        local keyname=$2
+        echo "[GPG-FIX]   Fetching key $keyid ($keyname)..."
+
+        # Try multiple keyservers for reliability
+        for server in keyserver.ubuntu.com keys.openpgp.org pgp.mit.edu; do
+            if gpg --batch --keyserver hkp://$server:80 --recv-keys $keyid 2>/dev/null; then
+                gpg --batch --export $keyid | gpg --dearmor > /usr/share/keyrings/debian-$keyname-keyring.gpg 2>/dev/null
+                echo "[GPG-FIX]     ✓ Key $keyid installed"
+                return 0
+            fi
+        done
+        echo "[GPG-FIX]     ⚠ Could not fetch key $keyid from keyservers"
+        return 1
+    }
+
+    # Import all required Debian Bookworm signing keys
+    fetch_key "6ED0E7B82643E131" "bookworm-release"
+    fetch_key "78DBA3BC47EF2265" "bookworm-stable"
+    fetch_key "F8D2585B8783D481" "bookworm-archive"
+    fetch_key "54404762BBB6E853" "bookworm-security-1"
+    fetch_key "BDE6D2B9216EC7A8" "bookworm-security-2"
+    fetch_key "0E98404D386FA1D9" "bookworm-automatic"
+
+    # Clean up
+    rm -rf "$GNUPGHOME"
+else
+    echo "[GPG-FIX]   gpg not available, relying on debian-archive-keyring package"
+fi
+
 chmod 644 /usr/share/keyrings/*.gpg 2>/dev/null || true
 
 echo "[GPG-FIX] GPG key import completed"

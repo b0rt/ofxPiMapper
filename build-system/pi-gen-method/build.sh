@@ -304,23 +304,81 @@ cat > "${PIGEN_DIR}/stage0/00-configure-apt/00-import-gpg-keys.sh" <<'EOFKEYS'
 
 # Import Debian Bookworm GPG keys before apt configuration
 # This fixes signature verification errors on arm64 builds
+# Using modern keyring approach instead of deprecated apt-key
 
 on_chroot << EOF
 echo "Importing Debian Bookworm GPG keys..."
 
-# Install gnupg if not present (allow insecure repos temporarily)
-apt-get update --allow-insecure-repositories || true
-apt-get install -y --allow-unauthenticated gnupg || true
+# Ensure gnupg and ca-certificates are installed (should be in base system)
+# These are typically already present from debootstrap
 
-# Import all required Debian Bookworm keys
-apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 6ED0E7B82643E131 || true
-apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 78DBA3BC47EF2265 || true
-apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys F8D2585B8783D481 || true
-apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 54404762BBB6E853 || true
-apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys BDE6D2B9216EC7A8 || true
-apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 0E98404D386FA1D9 || true
+# Create keyrings directory if it doesn't exist
+mkdir -p /usr/share/keyrings
+
+# Download and import Debian archive keyring directly
+# This is more reliable than using apt-key with keyservers
+echo "Downloading Debian archive keyring..."
+
+# Method 1: Try to install debian-archive-keyring package if available
+# This is the cleanest approach as it's maintained by Debian
+if ! dpkg -l | grep -q debian-archive-keyring; then
+    # Download the keyring package directly from Debian
+    cd /tmp
+    # Use the Debian snapshot for reliability
+    wget -q http://ftp.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_2023.4_all.deb || \
+    wget -q http://deb.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_2023.4_all.deb || true
+
+    if [ -f debian-archive-keyring_*.deb ]; then
+        dpkg -i debian-archive-keyring_*.deb || true
+        rm -f debian-archive-keyring_*.deb
+        echo "Debian archive keyring package installed"
+    fi
+fi
+
+# Method 2: Manually fetch and install keys using gpg (fallback)
+# This ensures keys are present even if package installation fails
+echo "Ensuring all required GPG keys are present..."
+
+# Fetch keys directly from Ubuntu keyserver and save to trusted GPG directory
+# Using gpg --dearmor is the modern replacement for apt-key
+export GNUPGHOME=/tmp/gpg-temp
+mkdir -p "\$GNUPGHOME"
+chmod 700 "\$GNUPGHOME"
+
+# Function to fetch and install a GPG key
+fetch_key() {
+    local keyid=\$1
+    local keyname=\$2
+    echo "Fetching key \$keyid (\$keyname)..."
+
+    # Try multiple keyservers for reliability
+    for server in keyserver.ubuntu.com keys.openpgp.org pgp.mit.edu; do
+        if gpg --batch --keyserver hkp://\$server:80 --recv-keys \$keyid 2>/dev/null; then
+            gpg --batch --export \$keyid | gpg --dearmor > /usr/share/keyrings/debian-\$keyname-keyring.gpg
+            echo "  ✓ Key \$keyid installed as debian-\$keyname-keyring.gpg"
+            break
+        fi
+    done || echo "  ⚠ Failed to fetch key \$keyid from keyservers (may already be in archive keyring)"
+}
+
+# Debian Bookworm signing keys
+fetch_key "6ED0E7B82643E131" "bookworm-release"
+fetch_key "78DBA3BC47EF2265" "bookworm-stable"
+fetch_key "F8D2585B8783D481" "bookworm-archive"
+fetch_key "54404762BBB6E853" "bookworm-security-1"
+fetch_key "BDE6D2B9216EC7A8" "bookworm-security-2"
+fetch_key "0E98404D386FA1D9" "bookworm-automatic"
+
+# Clean up temporary GPG home
+rm -rf "\$GNUPGHOME"
+
+# Ensure proper permissions on keyrings
+chmod 644 /usr/share/keyrings/*.gpg 2>/dev/null || true
 
 echo "GPG keys imported successfully"
+echo "Available keyrings in /usr/share/keyrings:"
+ls -la /usr/share/keyrings/*.gpg 2>/dev/null || echo "  (none found via ls, but may be installed)"
+
 EOF
 EOFKEYS
 

@@ -231,24 +231,32 @@ else
     cd "$PIGEN_DIR"
 fi
 
-# Determine which branch to use based on RPI_OS_RELEASE
-# This ensures GPG keys and repository configuration match the target release
-PIGEN_BRANCH="master"
-case "${RPI_OS_RELEASE}" in
-    bookworm|bullseye)
-        # Check if the release-specific branch exists
-        if git ls-remote --heads origin "${RPI_OS_RELEASE}" | grep -q "${RPI_OS_RELEASE}"; then
-            PIGEN_BRANCH="${RPI_OS_RELEASE}"
-            log_info "Using pi-gen branch '${PIGEN_BRANCH}' for ${RPI_OS_RELEASE} release"
-        else
-            log_warn "Branch '${RPI_OS_RELEASE}' not found, using master branch"
-            log_warn "This may cause GPG signature verification issues"
-        fi
-        ;;
-    *)
-        log_info "Using pi-gen master branch for ${RPI_OS_RELEASE} release"
-        ;;
-esac
+# Determine which branch to use based on ARCHITECTURE and RPI_OS_RELEASE
+# CRITICAL: pi-gen uses different branches for 32-bit vs 64-bit builds
+# - master branch: for 32-bit (armhf) images
+# - arm64 branch: for 64-bit (aarch64) images
+if [ "$ARCHITECTURE" = "arm64" ]; then
+    PIGEN_BRANCH="arm64"
+    log_info "Using pi-gen arm64 branch for 64-bit build"
+else
+    # 32-bit: Use release-specific branch or master
+    PIGEN_BRANCH="master"
+    case "${RPI_OS_RELEASE}" in
+        bookworm|bullseye)
+            # Check if the release-specific branch exists
+            if git ls-remote --heads origin "${RPI_OS_RELEASE}" | grep -q "${RPI_OS_RELEASE}"; then
+                PIGEN_BRANCH="${RPI_OS_RELEASE}"
+                log_info "Using pi-gen branch '${PIGEN_BRANCH}' for ${RPI_OS_RELEASE} release"
+            else
+                log_warn "Branch '${RPI_OS_RELEASE}' not found, using master branch"
+                log_warn "This may cause GPG signature verification issues"
+            fi
+            ;;
+        *)
+            log_info "Using pi-gen master branch for ${RPI_OS_RELEASE} release"
+            ;;
+    esac
+fi
 
 # Checkout the appropriate branch
 git checkout "${PIGEN_BRANCH}"
@@ -277,34 +285,156 @@ TIMEZONE_DEFAULT="${TIMEZONE}"
 FIRST_USER_NAME="${RPI_USERNAME}"
 FIRST_USER_PASS="${RPI_PASSWORD}"
 ENABLE_SSH="${ENABLE_SSH}"
+ARCH="${ARCHITECTURE}"
 STAGE_LIST="stage0 stage1 stage2 stage3"
+APT_PROXY=""
 EOF
+
+# Add GPG key import to stage0 (fixes Debian Bookworm arm64 key issues)
+# Create a separate script that runs BEFORE 00-run.sh to import keys
+log_info "Adding GPG key import script to stage0..."
+
+# Wait a moment for git operations to complete
+sleep 2
+
+# Create a new script that runs alphabetically before 00-run.sh
+# (00-import-gpg-keys.sh comes before 00-run.sh)
+cat > "${PIGEN_DIR}/stage0/00-configure-apt/00-import-gpg-keys.sh" <<'EOFKEYS'
+#!/bin/bash -e
+
+# Import Debian Bookworm GPG keys before apt configuration
+# This fixes signature verification errors on arm64 builds
+
+on_chroot << EOF
+echo "Importing Debian Bookworm GPG keys..."
+
+# Install gnupg if not present (allow insecure repos temporarily)
+apt-get update --allow-insecure-repositories || true
+apt-get install -y --allow-unauthenticated gnupg || true
+
+# Import all required Debian Bookworm keys
+apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 6ED0E7B82643E131 || true
+apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 78DBA3BC47EF2265 || true
+apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys F8D2585B8783D481 || true
+apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 54404762BBB6E853 || true
+apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys BDE6D2B9216EC7A8 || true
+apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 0E98404D386FA1D9 || true
+
+echo "GPG keys imported successfully"
+EOF
+EOFKEYS
+
+chmod +x "${PIGEN_DIR}/stage0/00-configure-apt/00-import-gpg-keys.sh"
+log_info "GPG key import script created and will run before apt configuration"
 
 # Determine which base stages to include
 if [ "$BASE_IMAGE" = "desktop" ]; then
-    # Include desktop environment (stage3 required, then stage4 for desktop, then custom stage5)
+    # Desktop: keep stage4 (desktop environment), add stage5 (custom ofxPiMapper)
     sed -i 's/STAGE_LIST=.*/STAGE_LIST="stage0 stage1 stage2 stage3 stage4 stage5"/' "${PIGEN_DIR}/config"
+    CUSTOM_STAGE="stage5"
+    SKIP_STAGE4=false
 else
-    # Lite version (no desktop, but stage3 is REQUIRED for proper rootfs)
-    sed -i 's/STAGE_LIST=.*/STAGE_LIST="stage0 stage1 stage2 stage3 stage5"/' "${PIGEN_DIR}/config"
+    # Lite: skip stage4 (desktop), use stage5 (custom ofxPiMapper)
+    sed -i 's/STAGE_LIST=.*/STAGE_LIST="stage0 stage1 stage2 stage3 stage4 stage5"/' "${PIGEN_DIR}/config"
+    CUSTOM_STAGE="stage5"
+    SKIP_STAGE4=true
 fi
 
+log_info "Using ${CUSTOM_STAGE} for custom ofxPiMapper installation (skip stage4: ${SKIP_STAGE4})"
+
 log_info "✓ pi-gen configured"
+
+################################################################################
+# Prepare stage4 for lite builds (pass-through without desktop packages)
+################################################################################
+
+if [ "$SKIP_STAGE4" = true ]; then
+    log_info "Configuring stage4 as pass-through for lite build (removing desktop scripts)"
+
+    # Remove all desktop installation scripts from stage4
+    # Keep the stage4 directory intact so pi-gen can copy rootfs through it
+    find "${PIGEN_DIR}/stage4" -mindepth 1 -maxdepth 1 -type d -name '[0-9][0-9]-*' -exec rm -rf {} \;
+
+    # Create a minimal prerun.sh to indicate this stage is processed
+    cat > "${PIGEN_DIR}/stage4/prerun.sh" <<'EOF'
+#!/bin/bash
+echo "Stage4 pass-through for lite build (no desktop packages)..."
+EOF
+    chmod +x "${PIGEN_DIR}/stage4/prerun.sh"
+
+    # CRITICAL: Add a dummy script directory so pi-gen creates work/stage4/rootfs
+    # Without at least one script directory, pi-gen won't set up the stage's work directory
+    mkdir -p "${PIGEN_DIR}/stage4/00-pass-through"
+    cat > "${PIGEN_DIR}/stage4/00-pass-through/00-run.sh" <<'EOF'
+#!/bin/bash
+# Dummy script to ensure pi-gen creates work/stage4/rootfs
+# This stage does nothing but allows rootfs to pass through to stage5
+echo "[INFO] Stage4 pass-through: No packages to install (lite build)"
+exit 0
+EOF
+    chmod +x "${PIGEN_DIR}/stage4/00-pass-through/00-run.sh"
+
+    log_info "Stage4 configured as pass-through with dummy script (rootfs will be created and passed to stage5)"
+fi
 
 ################################################################################
 # Create Custom ofxPiMapper Stage
 ################################################################################
 
-log_progress "Creating custom ofxPiMapper installation stage..."
+log_progress "Creating custom ofxPiMapper installation stage (${CUSTOM_STAGE})..."
 
+# Always use stage5 for custom installation
+# For desktop: stage4 has desktop, stage5 has custom
+# For lite: stage4 is SKIPPED, stage5 has custom
 STAGE_DIR="${PIGEN_DIR}/stage5"
-rm -rf "$STAGE_DIR"
+
+# Create stage5 directory (don't delete - it doesn't exist in default pi-gen)
 mkdir -p "$STAGE_DIR"
 
-# Create prerun script
+# Create prerun script that copies rootfs from previous stage (with fallback)
+# This is CRITICAL - without this, stage5 won't have a rootfs to chroot into!
 cat > "${STAGE_DIR}/prerun.sh" <<'EOF'
 #!/bin/bash
-echo "Starting ofxPiMapper custom stage (stage5)..."
+set -e
+
+echo "===== Starting ofxPiMapper custom installation stage (stage5) ====="
+
+# Determine which stage to copy rootfs from
+# Try stage4 first (for desktop builds or if stage4 completed)
+# Fall back to stage3 (for lite builds where stage4 didn't create rootfs)
+SOURCE_ROOTFS=""
+
+if [ -d "${PREV_ROOTFS_DIR}" ] && [ -n "$(ls -A "${PREV_ROOTFS_DIR}" 2>/dev/null)" ]; then
+    SOURCE_ROOTFS="${PREV_ROOTFS_DIR}"
+    echo "[INFO] Using stage4 rootfs: ${PREV_ROOTFS_DIR}"
+else
+    # Fallback to stage3 for lite builds
+    STAGE3_ROOTFS="$(dirname "$(dirname "${PREV_ROOTFS_DIR}")")/stage3/rootfs"
+    if [ -d "${STAGE3_ROOTFS}" ] && [ -n "$(ls -A "${STAGE3_ROOTFS}" 2>/dev/null)" ]; then
+        SOURCE_ROOTFS="${STAGE3_ROOTFS}"
+        echo "[WARNING] Stage4 rootfs not found, falling back to stage3: ${STAGE3_ROOTFS}"
+    else
+        echo "[ERROR] Neither stage4 nor stage3 rootfs found!"
+        echo "[ERROR] Tried: ${PREV_ROOTFS_DIR}"
+        echo "[ERROR] Tried: ${STAGE3_ROOTFS}"
+        exit 1
+    fi
+fi
+
+echo "[INFO] Copying rootfs from ${SOURCE_ROOTFS} to stage5..."
+
+# Create target directory structure (pi-gen doesn't create work dirs for custom stages)
+mkdir -p "${ROOTFS_DIR}"
+
+# Copy rootfs using rsync (traditional pi-gen method)
+rsync -aHAXx \
+    --exclude /var/cache/apt/archives \
+    --exclude /boot/firmware \
+    "${SOURCE_ROOTFS}/" \
+    "${ROOTFS_DIR}/"
+
+echo "[INFO] Rootfs copied successfully ($(du -sh "${ROOTFS_DIR}" | cut -f1))"
+echo "[INFO] Ready to install ofxPiMapper dependencies..."
 EOF
 
 chmod +x "${STAGE_DIR}/prerun.sh"
@@ -360,8 +490,6 @@ echo "[INFO] Installing GStreamer and plugins..."
 apt-get install -y \
     libgstreamer1.0-dev \
     libgstreamer-plugins-base1.0-dev \
-    libgstreamer-plugins-good1.0-dev \
-    libgstreamer-plugins-bad1.0-dev \
     gstreamer1.0-plugins-base \
     gstreamer1.0-plugins-good \
     gstreamer1.0-plugins-bad \
@@ -382,7 +510,8 @@ apt-get install -y \
     pulseaudio \
     libmpg123-dev \
     libsndfile1-dev \
-    libfreeimage-dev
+    libfreeimage-dev \
+    libopenal-dev
 
 ################################################################################
 # Install Additional Libraries
@@ -533,8 +662,12 @@ mkdir -p "${STAGE_DIR}/03-install-openframeworks/files"
 cp "${BUILD_SYSTEM_DIR}/scripts/install-openframeworks.sh" \
    "${STAGE_DIR}/03-install-openframeworks/files/install-openframeworks.sh"
 
-cat > "${STAGE_DIR}/03-install-openframeworks/00-run-chroot.sh" <<'EOFRUN'
+cat > "${STAGE_DIR}/03-install-openframeworks/00-run-chroot.sh" <<EOFRUN
 #!/bin/bash -e
+# Export openFrameworks configuration from build config
+export OF_VERSION="${OF_VERSION}"
+export OF_PLATFORM="${OF_PLATFORM}"
+export OF_ROOT="${OF_ROOT}"
 bash /tmp/install-openframeworks.sh
 EOFRUN
 

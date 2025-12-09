@@ -70,9 +70,12 @@ if ! wget -q --show-progress -O "${DOWNLOAD_DIR}/of.tar.gz" "${OF_DOWNLOAD_URL}"
     log_error "Failed to download openFrameworks"
     log_info "Trying alternative download method..."
 
-    # Try curl as fallback
-    if ! curl -L -o "${DOWNLOAD_DIR}/of.tar.gz" "${OF_DOWNLOAD_URL}"; then
+    # Try curl as fallback with proper error handling
+    if ! curl -fL --retry 3 --retry-delay 5 -o "${DOWNLOAD_DIR}/of.tar.gz" "${OF_DOWNLOAD_URL}"; then
         log_error "Download failed with both wget and curl"
+        log_error "Attempted URL: ${OF_DOWNLOAD_URL}"
+        log_info "Please check if this version/platform exists at:"
+        log_info "https://github.com/openframeworks/openFrameworks/releases/tag/${OF_VERSION}"
         rm -rf "$DOWNLOAD_DIR"
         exit 1
     fi
@@ -164,23 +167,42 @@ fi
 # Compile openFrameworks Core
 ################################################################################
 
-log_progress "Compiling openFrameworks core libraries..."
-log_info "This may take 30-60 minutes depending on your hardware..."
+log_progress "Checking for precompiled libraries..."
 
-cd "${OF_ROOT}/libs/openFrameworksCompiled/project"
-
-# Clean any previous builds
-sudo -u "$TARGET_USER" make clean || true
-
-# Compile with progress indicator
-log_info "Compiling with ${PARALLEL_JOBS} parallel jobs..."
-
-if sudo -u "$TARGET_USER" make -j${PARALLEL_JOBS} 2>&1 | tee /tmp/of_compile.log; then
-    log_info "openFrameworks core compiled successfully!"
+# Check if libraries are already compiled (common for release packages)
+if [ -f "${OF_ROOT}/libs/openFrameworksCompiled/lib/${OF_PLATFORM}/libopenFrameworks.a" ]; then
+    log_info "✓ Precompiled libraries found for ${OF_PLATFORM}"
+    log_info "Skipping compilation step (using release package libraries)"
 else
-    log_error "openFrameworks compilation failed. Check /tmp/of_compile.log for details"
-    tail -n 50 /tmp/of_compile.log
-    exit 1
+    log_progress "Compiling openFrameworks core libraries..."
+    log_info "This may take 30-60 minutes depending on your hardware..."
+
+    cd "${OF_ROOT}/libs/openFrameworksCompiled/project"
+
+    # Ensure platform-specific directories exist
+    mkdir -p "${OF_ROOT}/libs/openFrameworksCompiled/lib/${OF_PLATFORM}"
+    mkdir -p "${OF_ROOT}/libs/openFrameworksCompiled/project/${OF_PLATFORM}"
+
+    # Set platform environment variables for makefile
+    export PLATFORM_OS=Linux
+    export PLATFORM_ARCH=$(uname -m)
+    export PLATFORM_LIB_SUBPATH="${OF_PLATFORM}"
+
+    log_info "Platform detection: OS=${PLATFORM_OS}, ARCH=${PLATFORM_ARCH}, LIB_SUBPATH=${PLATFORM_LIB_SUBPATH}"
+
+    # Clean any previous builds (use -E to preserve environment)
+    sudo -E -u "$TARGET_USER" make clean || true
+
+    # Compile with progress indicator
+    log_info "Compiling with ${PARALLEL_JOBS} parallel jobs..."
+
+    if sudo -E -u "$TARGET_USER" make -j${PARALLEL_JOBS} 2>&1 | tee /tmp/of_compile.log; then
+        log_info "openFrameworks core compiled successfully!"
+    else
+        log_error "openFrameworks compilation failed. Check /tmp/of_compile.log for details"
+        tail -n 50 /tmp/of_compile.log
+        exit 1
+    fi
 fi
 
 ################################################################################

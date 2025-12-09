@@ -133,6 +133,9 @@ log_info "✓ Screen blanking disabled"
 
 log_info "Configuring OpenGL settings..."
 
+# Create environment.d directory if it doesn't exist
+mkdir -p /etc/environment.d
+
 # Force OpenGL ES 2.0 for better compatibility
 cat > /etc/environment.d/opengl.conf <<EOF
 # Force OpenGL ES 2.0

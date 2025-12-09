@@ -514,6 +514,24 @@ else
     exit 1
 fi
 
+# Fix stage2 package list - remove unavailable rpi-* packages
+log_info "Fixing stage2 package list to remove unavailable packages..."
+
+STAGE2_PACKAGES="${PIGEN_DIR}/stage2/01-sys-tweaks/00-packages"
+if [ -f "$STAGE2_PACKAGES" ]; then
+    # Remove packages that don't exist in Bookworm repositories
+    # These were likely removed or renamed in newer Debian/Raspbian versions
+    sed -i '/^rpi-swap$/d' "$STAGE2_PACKAGES"
+    sed -i '/^rpi-loop-utils$/d' "$STAGE2_PACKAGES"
+    sed -i '/^rpi-usb-gadget$/d' "$STAGE2_PACKAGES"
+
+    log_info "✓ Removed unavailable packages: rpi-swap, rpi-loop-utils, rpi-usb-gadget"
+    log_info "  Modified package list contents:"
+    cat "$STAGE2_PACKAGES" | head -20
+else
+    log_warn "stage2/01-sys-tweaks/00-packages not found - skipping package removal"
+fi
+
 # Determine which base stages to include
 if [ "$BASE_IMAGE" = "desktop" ]; then
     # Desktop: keep stage4 (desktop environment), add stage5 (custom ofxPiMapper)

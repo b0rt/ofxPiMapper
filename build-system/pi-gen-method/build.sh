@@ -216,20 +216,45 @@ if [ "$CLEAN_BUILD" = true ]; then
 fi
 
 ################################################################################
+# Git Retry Helper Function
+################################################################################
+
+# Retry git operations with exponential backoff
+# Usage: git_retry <git command with args>
+git_retry() {
+    local max_attempts=4
+    local attempt=1
+    local delay=2
+
+    while [ $attempt -le $max_attempts ]; do
+        if [ $attempt -gt 1 ]; then
+            log_warn "Retry attempt $attempt of $max_attempts after ${delay}s delay..."
+            sleep $delay
+        fi
+
+        # Execute the git command
+        if "$@"; then
+            return 0
+        fi
+
+        log_warn "Git command failed: $*"
+
+        if [ $attempt -lt $max_attempts ]; then
+            delay=$((delay * 2))  # Exponential backoff: 2s, 4s, 8s, 16s
+        fi
+
+        attempt=$((attempt + 1))
+    done
+
+    log_error "Git command failed after $max_attempts attempts: $*"
+    return 1
+}
+
+################################################################################
 # Clone/Update pi-gen
 ################################################################################
 
 log_progress "Setting up pi-gen..."
-
-if [ -d "$PIGEN_DIR" ]; then
-    log_info "Updating existing pi-gen repository..."
-    cd "$PIGEN_DIR"
-    git fetch origin
-else
-    log_info "Cloning pi-gen repository..."
-    git clone https://github.com/RPi-Distro/pi-gen.git "$PIGEN_DIR"
-    cd "$PIGEN_DIR"
-fi
 
 # Determine which branch to use based on ARCHITECTURE and RPI_OS_RELEASE
 # CRITICAL: pi-gen uses different branches for 32-bit vs 64-bit builds
@@ -237,30 +262,25 @@ fi
 # - arm64 branch: for 64-bit (aarch64) images
 if [ "$ARCHITECTURE" = "arm64" ]; then
     PIGEN_BRANCH="arm64"
-    log_info "Using pi-gen arm64 branch for 64-bit build"
+    log_info "Target branch: arm64 (for 64-bit build)"
 else
     # 32-bit: Use release-specific branch or master
     PIGEN_BRANCH="master"
-    case "${RPI_OS_RELEASE}" in
-        bookworm|bullseye)
-            # Check if the release-specific branch exists
-            if git ls-remote --heads origin "${RPI_OS_RELEASE}" | grep -q "${RPI_OS_RELEASE}"; then
-                PIGEN_BRANCH="${RPI_OS_RELEASE}"
-                log_info "Using pi-gen branch '${PIGEN_BRANCH}' for ${RPI_OS_RELEASE} release"
-            else
-                log_warn "Branch '${RPI_OS_RELEASE}' not found, using master branch"
-                log_warn "This may cause GPG signature verification issues"
-            fi
-            ;;
-        *)
-            log_info "Using pi-gen master branch for ${RPI_OS_RELEASE} release"
-            ;;
-    esac
+    log_info "Target branch: master (for 32-bit build, ${RPI_OS_RELEASE})"
 fi
 
-# Checkout the appropriate branch
-git checkout "${PIGEN_BRANCH}"
-git pull origin "${PIGEN_BRANCH}"
+if [ -d "$PIGEN_DIR" ]; then
+    log_info "Updating existing pi-gen repository..."
+    cd "$PIGEN_DIR"
+    git_retry git fetch origin
+    git checkout "${PIGEN_BRANCH}"
+    git_retry git pull origin "${PIGEN_BRANCH}"
+else
+    log_info "Cloning pi-gen repository (branch: ${PIGEN_BRANCH})..."
+    # Clone specific branch with shallow depth for faster downloads
+    git_retry git clone --depth 1 --branch "${PIGEN_BRANCH}" https://github.com/RPi-Distro/pi-gen.git "$PIGEN_DIR"
+    cd "$PIGEN_DIR"
+fi
 
 PIGEN_COMMIT=$(git rev-parse --short HEAD)
 log_info "Using pi-gen commit: $PIGEN_COMMIT (branch: $PIGEN_BRANCH)"

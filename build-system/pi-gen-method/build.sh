@@ -517,19 +517,47 @@ fi
 # Fix stage2 package list - remove unavailable rpi-* packages
 log_info "Fixing stage2 package list to remove unavailable packages..."
 
+# List of unavailable packages to remove
+UNAVAILABLE_PACKAGES=(
+    "rpi-swap"
+    "rpi-loop-utils"
+    "rpi-usb-gadget"
+)
+
+# Fix all package list files in stage2/01-sys-tweaks
+for PACKAGE_FILE in "${PIGEN_DIR}/stage2/01-sys-tweaks/"00-packages*; do
+    if [ -f "$PACKAGE_FILE" ]; then
+        log_info "Processing package file: $(basename "$PACKAGE_FILE")"
+
+        # Show original contents
+        log_info "  Original contents:"
+        cat "$PACKAGE_FILE" | head -20
+
+        # Remove each unavailable package
+        for pkg in "${UNAVAILABLE_PACKAGES[@]}"; do
+            # Use more robust sed pattern that handles whitespace
+            sed -i "/^[[:space:]]*${pkg}[[:space:]]*$/d" "$PACKAGE_FILE"
+        done
+
+        log_info "  Modified contents:"
+        cat "$PACKAGE_FILE" | head -20
+        log_info "✓ Processed $(basename "$PACKAGE_FILE")"
+    fi
+done
+
+# Verify the fix worked
 STAGE2_PACKAGES="${PIGEN_DIR}/stage2/01-sys-tweaks/00-packages"
 if [ -f "$STAGE2_PACKAGES" ]; then
-    # Remove packages that don't exist in Bookworm repositories
-    # These were likely removed or renamed in newer Debian/Raspbian versions
-    sed -i '/^rpi-swap$/d' "$STAGE2_PACKAGES"
-    sed -i '/^rpi-loop-utils$/d' "$STAGE2_PACKAGES"
-    sed -i '/^rpi-usb-gadget$/d' "$STAGE2_PACKAGES"
-
-    log_info "✓ Removed unavailable packages: rpi-swap, rpi-loop-utils, rpi-usb-gadget"
-    log_info "  Modified package list contents:"
-    cat "$STAGE2_PACKAGES" | head -20
+    log_info "Verifying package removals..."
+    for pkg in "${UNAVAILABLE_PACKAGES[@]}"; do
+        if grep -q "^[[:space:]]*${pkg}[[:space:]]*$" "$STAGE2_PACKAGES"; then
+            log_error "Package '${pkg}' still present in 00-packages after removal!"
+        else
+            log_info "  ✓ ${pkg} removed"
+        fi
+    done
 else
-    log_warn "stage2/01-sys-tweaks/00-packages not found - skipping package removal"
+    log_warn "stage2/01-sys-tweaks/00-packages not found - skipping verification"
 fi
 
 # Determine which base stages to include

@@ -524,41 +524,73 @@ UNAVAILABLE_PACKAGES=(
     "rpi-usb-gadget"
 )
 
-# Fix all package list files in stage2/01-sys-tweaks
-for PACKAGE_FILE in "${PIGEN_DIR}/stage2/01-sys-tweaks/"00-packages*; do
+# Check if stage2 directory exists
+log_info "Checking for stage2 directory: ${PIGEN_DIR}/stage2/01-sys-tweaks/"
+if [ ! -d "${PIGEN_DIR}/stage2/01-sys-tweaks/" ]; then
+    log_error "stage2/01-sys-tweaks directory not found!"
+    log_error "Contents of ${PIGEN_DIR}/stage2:"
+    ls -la "${PIGEN_DIR}/stage2" || log_error "stage2 directory doesn't exist"
+    exit 1
+fi
+
+# List all package files found
+log_info "Looking for package files in ${PIGEN_DIR}/stage2/01-sys-tweaks/"
+ls -la "${PIGEN_DIR}/stage2/01-sys-tweaks/" | grep -E "packages" || log_warn "No package files found"
+
+# Process each package file
+FILES_PROCESSED=0
+for PACKAGE_FILE in "${PIGEN_DIR}/stage2/01-sys-tweaks/00-packages" "${PIGEN_DIR}/stage2/01-sys-tweaks/00-packages-nr"; do
     if [ -f "$PACKAGE_FILE" ]; then
-        log_info "Processing package file: $(basename "$PACKAGE_FILE")"
+        FILES_PROCESSED=$((FILES_PROCESSED + 1))
+        log_info "Processing package file: $PACKAGE_FILE"
 
         # Show original contents
-        log_info "  Original contents:"
-        cat "$PACKAGE_FILE" | head -20
+        log_info "  Original contents (first 30 lines):"
+        cat "$PACKAGE_FILE" | head -30
 
-        # Remove each unavailable package
+        # Count packages to remove
+        REMOVED_COUNT=0
         for pkg in "${UNAVAILABLE_PACKAGES[@]}"; do
-            # Use more robust sed pattern that handles whitespace
-            sed -i "/^[[:space:]]*${pkg}[[:space:]]*$/d" "$PACKAGE_FILE"
+            # Check if package exists in file
+            if grep -qE "^[[:space:]]*${pkg}[[:space:]]*$" "$PACKAGE_FILE"; then
+                log_info "  Removing package: ${pkg}"
+                # Use more robust sed pattern that handles whitespace
+                sed -i "/^[[:space:]]*${pkg}[[:space:]]*$/d" "$PACKAGE_FILE"
+                REMOVED_COUNT=$((REMOVED_COUNT + 1))
+            fi
         done
 
-        log_info "  Modified contents:"
-        cat "$PACKAGE_FILE" | head -20
+        log_info "  Removed ${REMOVED_COUNT} packages from $(basename "$PACKAGE_FILE")"
+        log_info "  Modified contents (first 30 lines):"
+        cat "$PACKAGE_FILE" | head -30
         log_info "✓ Processed $(basename "$PACKAGE_FILE")"
+    else
+        log_warn "Package file not found: $PACKAGE_FILE"
     fi
 done
 
-# Verify the fix worked
-STAGE2_PACKAGES="${PIGEN_DIR}/stage2/01-sys-tweaks/00-packages"
-if [ -f "$STAGE2_PACKAGES" ]; then
-    log_info "Verifying package removals..."
-    for pkg in "${UNAVAILABLE_PACKAGES[@]}"; do
-        if grep -q "^[[:space:]]*${pkg}[[:space:]]*$" "$STAGE2_PACKAGES"; then
-            log_error "Package '${pkg}' still present in 00-packages after removal!"
-        else
-            log_info "  ✓ ${pkg} removed"
-        fi
-    done
-else
-    log_warn "stage2/01-sys-tweaks/00-packages not found - skipping verification"
+if [ $FILES_PROCESSED -eq 0 ]; then
+    log_error "No package files were processed!"
+    exit 1
 fi
+
+log_info "✓ Processed $FILES_PROCESSED package file(s)"
+
+# Verify the fix worked
+log_info "Final verification of package removals..."
+for PACKAGE_FILE in "${PIGEN_DIR}/stage2/01-sys-tweaks/00-packages" "${PIGEN_DIR}/stage2/01-sys-tweaks/00-packages-nr"; do
+    if [ -f "$PACKAGE_FILE" ]; then
+        log_info "Checking $(basename "$PACKAGE_FILE")..."
+        for pkg in "${UNAVAILABLE_PACKAGES[@]}"; do
+            if grep -qE "^[[:space:]]*${pkg}[[:space:]]*$" "$PACKAGE_FILE"; then
+                log_error "  ✗ Package '${pkg}' still present after removal!"
+                exit 1
+            else
+                log_info "  ✓ ${pkg} removed successfully"
+            fi
+        done
+    fi
+done
 
 # Determine which base stages to include
 if [ "$BASE_IMAGE" = "desktop" ]; then

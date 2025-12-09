@@ -291,79 +291,80 @@ APT_PROXY=""
 EOF
 
 # Add GPG key import to stage0 (fixes Debian Bookworm arm64 key issues)
-# Create a prerun.sh script that runs BEFORE 00-run.sh in the 00-configure-apt directory
-log_info "Adding GPG key import as prerun.sh to stage0/00-configure-apt..."
+# Prepend GPG key import to the existing stage0/00-configure-apt/00-run.sh script
+log_info "Adding GPG key import to stage0/00-configure-apt/00-run.sh..."
 
 # Wait a moment for git operations to complete
 sleep 2
 
-# Create prerun.sh in the 00-configure-apt directory
-# Pi-gen executes prerun.sh before any other scripts in the directory
-cat > "${PIGEN_DIR}/stage0/00-configure-apt/prerun.sh" <<'EOFKEYS'
+# Save the original 00-run.sh content
+ORIGINAL_SCRIPT="${PIGEN_DIR}/stage0/00-configure-apt/00-run.sh"
+
+if [ -f "$ORIGINAL_SCRIPT" ]; then
+    # Create a backup
+    cp "$ORIGINAL_SCRIPT" "${ORIGINAL_SCRIPT}.bak"
+
+    # Create new version with GPG key import prepended
+    cat > "$ORIGINAL_SCRIPT" <<'EOFKEYS'
 #!/bin/bash -e
 
+# ============================================================================
+# GPG Key Import (PREPENDED BY ofxPiMapper build system)
+# ============================================================================
 # Import Debian Bookworm GPG keys before apt configuration
 # This fixes signature verification errors on arm64 builds
-# Using modern keyring approach instead of deprecated apt-key
 
-echo "[GPG-FIX] Importing Debian Bookworm GPG keys before apt configuration..."
+echo "[GPG-FIX] Importing Debian Bookworm GPG keys before apt-get update..."
 
-on_chroot << EOF
+on_chroot << 'EOFGPG'
 echo "[GPG-FIX] Starting GPG key import in chroot..."
-
-# Ensure gnupg and ca-certificates are installed (should be in base system)
-# These are typically already present from debootstrap
 
 # Create keyrings directory if it doesn't exist
 mkdir -p /usr/share/keyrings
 
-# Download and import Debian archive keyring directly
-# This is more reliable than using apt-key with keyservers
-echo "[GPG-FIX] Downloading Debian archive keyring package..."
-
-# Method 1: Try to install debian-archive-keyring package if available
+# Method 1: Install debian-archive-keyring package
 # This is the cleanest approach as it's maintained by Debian
-if ! dpkg -l | grep -q debian-archive-keyring; then
-    # Download the keyring package directly from Debian
+echo "[GPG-FIX] Attempting to install debian-archive-keyring package..."
+if ! dpkg -l | grep -q "^ii  debian-archive-keyring"; then
     cd /tmp
-    # Use the Debian snapshot for reliability
-    wget -q http://ftp.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_2023.4_all.deb || \
-    wget -q http://deb.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_2023.4_all.deb || true
-
-    if [ -f debian-archive-keyring_*.deb ]; then
-        dpkg -i debian-archive-keyring_*.deb || true
-        rm -f debian-archive-keyring_*.deb
-        echo "[GPG-FIX] Debian archive keyring package installed"
+    # Try to download the package (with fallback URLs)
+    if wget -q http://ftp.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_2023.4_all.deb 2>/dev/null || \
+       wget -q http://deb.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_2023.4_all.deb 2>/dev/null; then
+        if [ -f debian-archive-keyring_*.deb ]; then
+            dpkg -i debian-archive-keyring_*.deb 2>/dev/null || true
+            rm -f debian-archive-keyring_*.deb
+            echo "[GPG-FIX] debian-archive-keyring package installed"
+        fi
     fi
 fi
 
-# Method 2: Manually fetch and install keys using gpg (fallback)
-# This ensures keys are present even if package installation fails
-echo "[GPG-FIX] Ensuring all required GPG keys are present..."
+# Method 2: Manual GPG key import (fallback)
+# Fetch keys directly and save to trusted keyring directory
+echo "[GPG-FIX] Ensuring all required GPG keys are present via manual import..."
 
-# Fetch keys directly from Ubuntu keyserver and save to trusted GPG directory
-# Using gpg --dearmor is the modern replacement for apt-key
-export GNUPGHOME=/tmp/gpg-temp
-mkdir -p "\$GNUPGHOME"
-chmod 700 "\$GNUPGHOME"
+export GNUPGHOME=/tmp/gpg-temp-$$
+mkdir -p "$GNUPGHOME"
+chmod 700 "$GNUPGHOME"
 
 # Function to fetch and install a GPG key
 fetch_key() {
-    local keyid=\$1
-    local keyname=\$2
-    echo "[GPG-FIX] Fetching key \$keyid (\$keyname)..."
+    local keyid=$1
+    local keyname=$2
+    echo "[GPG-FIX]   Fetching key $keyid ($keyname)..."
 
     # Try multiple keyservers for reliability
     for server in keyserver.ubuntu.com keys.openpgp.org pgp.mit.edu; do
-        if gpg --batch --keyserver hkp://\$server:80 --recv-keys \$keyid 2>/dev/null; then
-            gpg --batch --export \$keyid | gpg --dearmor > /usr/share/keyrings/debian-\$keyname-keyring.gpg
-            echo "[GPG-FIX]   ✓ Key \$keyid installed as debian-\$keyname-keyring.gpg"
-            break
+        if gpg --batch --keyserver hkp://$server:80 --recv-keys $keyid 2>/dev/null; then
+            gpg --batch --export $keyid | gpg --dearmor > /usr/share/keyrings/debian-$keyname-keyring.gpg 2>/dev/null
+            echo "[GPG-FIX]     ✓ Key $keyid installed"
+            return 0
         fi
-    done || echo "[GPG-FIX]   ⚠ Failed to fetch key \$keyid from keyservers (may already be in archive keyring)"
+    done
+    echo "[GPG-FIX]     ⚠ Could not fetch key $keyid (may already exist in keyring)"
+    return 1
 }
 
-# Debian Bookworm signing keys
+# Import all required Debian Bookworm signing keys
 fetch_key "6ED0E7B82643E131" "bookworm-release"
 fetch_key "78DBA3BC47EF2265" "bookworm-stable"
 fetch_key "F8D2585B8783D481" "bookworm-archive"
@@ -371,23 +372,33 @@ fetch_key "54404762BBB6E853" "bookworm-security-1"
 fetch_key "BDE6D2B9216EC7A8" "bookworm-security-2"
 fetch_key "0E98404D386FA1D9" "bookworm-automatic"
 
-# Clean up temporary GPG home
-rm -rf "\$GNUPGHOME"
-
-# Ensure proper permissions on keyrings
+# Clean up
+rm -rf "$GNUPGHOME"
 chmod 644 /usr/share/keyrings/*.gpg 2>/dev/null || true
 
-echo "[GPG-FIX] GPG keys imported successfully"
-echo "[GPG-FIX] Available keyrings in /usr/share/keyrings:"
-ls -la /usr/share/keyrings/*.gpg 2>/dev/null || echo "[GPG-FIX]   (none found via ls, but may be installed)"
+echo "[GPG-FIX] GPG key import completed"
+echo "[GPG-FIX] Keyrings in /usr/share/keyrings:"
+ls -lh /usr/share/keyrings/*.gpg 2>/dev/null | head -10 || echo "[GPG-FIX]   (package may have installed keys to /etc/apt/trusted.gpg.d/)"
 
-EOF
+EOFGPG
 
-echo "[GPG-FIX] GPG key import prerun.sh completed"
+echo "[GPG-FIX] GPG key import completed, proceeding with apt configuration..."
+echo ""
+
+# ============================================================================
+# ORIGINAL 00-run.sh CONTENT BELOW
+# ============================================================================
 EOFKEYS
 
-chmod +x "${PIGEN_DIR}/stage0/00-configure-apt/prerun.sh"
-log_info "GPG key import prerun.sh created - will execute before 00-run.sh in apt configuration stage"
+    # Append the original script content (skipping the shebang if present)
+    tail -n +2 "${ORIGINAL_SCRIPT}.bak" >> "$ORIGINAL_SCRIPT"
+
+    chmod +x "$ORIGINAL_SCRIPT"
+    log_info "✓ GPG key import prepended to stage0/00-configure-apt/00-run.sh"
+else
+    log_error "stage0/00-configure-apt/00-run.sh not found - cannot inject GPG key import"
+    exit 1
+fi
 
 # Determine which base stages to include
 if [ "$BASE_IMAGE" = "desktop" ]; then

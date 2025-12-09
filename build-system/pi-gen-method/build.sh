@@ -412,9 +412,32 @@ fi
 
 chmod 644 /usr/share/keyrings/*.gpg 2>/dev/null || true
 
+# Method 4: Copy keyrings to apt's trusted directory
+# APT looks for keys in /etc/apt/trusted.gpg.d/ by default
+echo "[GPG-FIX] Copying keyrings to apt trusted directory..."
+mkdir -p /etc/apt/trusted.gpg.d/
+
+# Copy all Debian archive keyrings to where apt expects them
+if [ -f /usr/share/keyrings/debian-archive-keyring.gpg ]; then
+    cp /usr/share/keyrings/debian-archive-keyring.gpg /etc/apt/trusted.gpg.d/
+    echo "[GPG-FIX]   ✓ Copied debian-archive-keyring.gpg"
+fi
+
+# Also copy the bookworm-specific keyrings
+for keyring in /usr/share/keyrings/debian-archive-bookworm*.gpg; do
+    if [ -f "$keyring" ]; then
+        cp "$keyring" /etc/apt/trusted.gpg.d/
+        echo "[GPG-FIX]   ✓ Copied $(basename $keyring)"
+    fi
+done
+
+chmod 644 /etc/apt/trusted.gpg.d/*.gpg 2>/dev/null || true
+
 echo "[GPG-FIX] GPG key import completed"
 echo "[GPG-FIX] Keyrings in /usr/share/keyrings:"
-ls -lh /usr/share/keyrings/*.gpg 2>/dev/null | head -10 || echo "[GPG-FIX]   (package may have installed keys to /etc/apt/trusted.gpg.d/)"
+ls -lh /usr/share/keyrings/*.gpg 2>/dev/null | head -10 || echo "[GPG-FIX]   (none found)"
+echo "[GPG-FIX] Keyrings in /etc/apt/trusted.gpg.d/:"
+ls -lh /etc/apt/trusted.gpg.d/*.gpg 2>/dev/null | head -10 || echo "[GPG-FIX]   (none found)"
 
 EOFGPG
 

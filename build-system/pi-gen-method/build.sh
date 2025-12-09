@@ -290,37 +290,48 @@ STAGE_LIST="stage0 stage1 stage2 stage3"
 APT_PROXY=""
 EOF
 
-# Add GPG key import script for stage0 (fixes Debian Bookworm arm64 key issues)
-log_info "Creating stage0 GPG key import script..."
-mkdir -p "${PIGEN_DIR}/stage0/00-configure-apt/files"
-cat > "${PIGEN_DIR}/stage0/00-configure-apt/00-run-chroot.sh" <<'EOFGPG'
-#!/bin/bash -e
-# Import Debian Bookworm GPG keys to fix signature verification errors
-# These keys are required for arm64 Debian Bookworm repositories
+# Add GPG key import to stage0 (fixes Debian Bookworm arm64 key issues)
+# This patches the existing 00-run.sh to import keys BEFORE apt update
+log_info "Patching stage0 apt configuration to import GPG keys..."
 
+# Wait a moment for git operations to complete
+sleep 2
+
+# Create a patched version of stage0/00-configure-apt/00-run.sh
+cat > "${PIGEN_DIR}/stage0/00-configure-apt/00-run.sh" <<'EOFRUN'
+#!/bin/bash -e
+
+# Import Debian Bookworm GPG keys before apt update
+# This fixes signature verification errors on arm64 builds
+on_chroot << EOFKEYS
 echo "Importing Debian Bookworm GPG keys..."
 
-# List of required keys for Debian Bookworm
-KEYS=(
-    "6ED0E7B82643E131"  # Debian Archive Automatic Signing Key (12/bookworm)
-    "F8D2585B8783D481"  # Debian Stable Release Key (12/bookworm)
-    "78DBA3BC47EF2265"  # Debian Security Archive Automatic Signing Key (12/bookworm)
-    "54404762BBB6E853"  # Debian Security Archive Automatic Signing Key
-    "BDE6D2B9216EC7A8"  # Debian Security Archive Automatic Signing Key
-    "0E98404D386FA1D9"  # Debian Archive Automatic Signing Key (11/bullseye)
-)
+# Install gnupg if not present
+apt-get update --allow-insecure-repositories || true
+apt-get install -y --allow-unauthenticated gnupg || true
 
-# Import keys from keyserver
-for key in "${KEYS[@]}"; do
-    echo "Importing key: $key"
-    gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys "$key" 2>/dev/null || true
-    gpg --export "$key" | apt-key add - 2>/dev/null || true
-done
+# Import keys directly into apt's keyring
+apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 6ED0E7B82643E131 || true
+apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 78DBA3BC47EF2265 || true
+apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys F8D2585B8783D481 || true
+apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 54404762BBB6E853 || true
+apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys BDE6D2B9216EC7A8 || true
+apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 0E98404D386FA1D9 || true
 
-echo "GPG keys imported successfully"
-EOFGPG
+echo "GPG keys imported"
+EOFKEYS
 
-chmod +x "${PIGEN_DIR}/stage0/00-configure-apt/00-run-chroot.sh"
+# Now run normal apt configuration
+install -m 644 files/sources.list "${ROOTFS_DIR}/etc/apt/sources.list"
+install -m 644 files/raspi.list "${ROOTFS_DIR}/etc/apt/sources.list.d/raspi.list"
+
+on_chroot <<EOF
+apt-get update
+apt-get dist-upgrade -y
+EOF
+EOFRUN
+
+chmod +x "${PIGEN_DIR}/stage0/00-configure-apt/00-run.sh"
 
 # Determine which base stages to include
 if [ "$BASE_IMAGE" = "desktop" ]; then

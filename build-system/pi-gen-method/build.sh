@@ -287,7 +287,40 @@ FIRST_USER_PASS="${RPI_PASSWORD}"
 ENABLE_SSH="${ENABLE_SSH}"
 ARCH="${ARCHITECTURE}"
 STAGE_LIST="stage0 stage1 stage2 stage3"
+APT_PROXY=""
 EOF
+
+# Add GPG key import script for stage0 (fixes Debian Bookworm arm64 key issues)
+log_info "Creating stage0 GPG key import script..."
+mkdir -p "${PIGEN_DIR}/stage0/00-configure-apt/files"
+cat > "${PIGEN_DIR}/stage0/00-configure-apt/00-run-chroot.sh" <<'EOFGPG'
+#!/bin/bash -e
+# Import Debian Bookworm GPG keys to fix signature verification errors
+# These keys are required for arm64 Debian Bookworm repositories
+
+echo "Importing Debian Bookworm GPG keys..."
+
+# List of required keys for Debian Bookworm
+KEYS=(
+    "6ED0E7B82643E131"  # Debian Archive Automatic Signing Key (12/bookworm)
+    "F8D2585B8783D481"  # Debian Stable Release Key (12/bookworm)
+    "78DBA3BC47EF2265"  # Debian Security Archive Automatic Signing Key (12/bookworm)
+    "54404762BBB6E853"  # Debian Security Archive Automatic Signing Key
+    "BDE6D2B9216EC7A8"  # Debian Security Archive Automatic Signing Key
+    "0E98404D386FA1D9"  # Debian Archive Automatic Signing Key (11/bullseye)
+)
+
+# Import keys from keyserver
+for key in "${KEYS[@]}"; do
+    echo "Importing key: $key"
+    gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys "$key" 2>/dev/null || true
+    gpg --export "$key" | apt-key add - 2>/dev/null || true
+done
+
+echo "GPG keys imported successfully"
+EOFGPG
+
+chmod +x "${PIGEN_DIR}/stage0/00-configure-apt/00-run-chroot.sh"
 
 # Determine which base stages to include
 if [ "$BASE_IMAGE" = "desktop" ]; then

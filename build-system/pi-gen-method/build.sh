@@ -464,7 +464,8 @@ apt-get install -y \
     pulseaudio \
     libmpg123-dev \
     libsndfile1-dev \
-    libfreeimage-dev
+    libfreeimage-dev \
+    libopenal-dev
 
 ################################################################################
 # Install Additional Libraries

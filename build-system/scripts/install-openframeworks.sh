@@ -164,20 +164,46 @@ else
 fi
 
 ################################################################################
-# Compile openFrameworks Core (Skip during image build)
+# Compile openFrameworks Core
 ################################################################################
 
-log_progress "Preparing openFrameworks for first-boot compilation..."
+log_progress "Checking for precompiled libraries..."
 
-# Note: We skip compilation during image build due to QEMU/chroot architecture
-# mismatches. The libraries will be compiled on first boot on actual hardware.
+# Check if libraries are already compiled (common for release packages)
+if [ -f "${OF_ROOT}/libs/openFrameworksCompiled/lib/${OF_PLATFORM}/libopenFrameworks.a" ]; then
+    log_info "✓ Precompiled libraries found for ${OF_PLATFORM}"
+    log_info "Skipping compilation step (using release package libraries)"
+else
+    log_progress "Compiling openFrameworks core libraries..."
+    log_info "This may take 30-60 minutes depending on your hardware..."
 
-log_info "openFrameworks downloaded and extracted successfully"
-log_info "Compilation will happen on first boot (see post-install scripts)"
+    cd "${OF_ROOT}/libs/openFrameworksCompiled/project"
 
-# Create platform directories for future compilation
-mkdir -p "${OF_ROOT}/libs/openFrameworksCompiled/lib/${OF_PLATFORM}"
-mkdir -p "${OF_ROOT}/libs/openFrameworksCompiled/project/${OF_PLATFORM}"
+    # Ensure platform-specific directories exist
+    mkdir -p "${OF_ROOT}/libs/openFrameworksCompiled/lib/${OF_PLATFORM}"
+    mkdir -p "${OF_ROOT}/libs/openFrameworksCompiled/project/${OF_PLATFORM}"
+
+    # Set platform environment variables for makefile
+    export PLATFORM_OS=Linux
+    export PLATFORM_ARCH=$(uname -m)
+    export PLATFORM_LIB_SUBPATH="${OF_PLATFORM}"
+
+    log_info "Platform detection: OS=${PLATFORM_OS}, ARCH=${PLATFORM_ARCH}, LIB_SUBPATH=${PLATFORM_LIB_SUBPATH}"
+
+    # Clean any previous builds (use -E to preserve environment)
+    sudo -E -u "$TARGET_USER" make clean || true
+
+    # Compile with progress indicator
+    log_info "Compiling with ${PARALLEL_JOBS} parallel jobs..."
+
+    if sudo -E -u "$TARGET_USER" make -j${PARALLEL_JOBS} 2>&1 | tee /tmp/of_compile.log; then
+        log_info "openFrameworks core compiled successfully!"
+    else
+        log_error "openFrameworks compilation failed. Check /tmp/of_compile.log for details"
+        tail -n 50 /tmp/of_compile.log
+        exit 1
+    fi
+fi
 
 ################################################################################
 # Verify Installation
@@ -187,13 +213,12 @@ log_progress "Verifying openFrameworks installation..."
 
 VERIFICATION_FAILED=0
 
-# Check for critical files and directories (not including compiled library since
-# compilation is deferred to first boot)
+# Check for critical files and directories
 CRITICAL_PATHS=(
+    "${OF_ROOT}/libs/openFrameworksCompiled/lib/${OF_PLATFORM}/libopenFrameworks.a"
     "${OF_ROOT}/addons"
     "${OF_ROOT}/apps"
     "${OF_ROOT}/examples"
-    "${OF_ROOT}/libs/openFrameworks"
 )
 
 for path in "${CRITICAL_PATHS[@]}"; do
@@ -209,11 +234,34 @@ if [ $VERIFICATION_FAILED -eq 1 ]; then
 fi
 
 ################################################################################
-# Test Compilation (Skipped - will be done on first boot)
+# Test Compilation with Empty Example
 ################################################################################
 
-log_info "Skipping test compilation (will be done on first boot)"
-log_info "openFrameworks is ready for compilation on the Raspberry Pi"
+log_progress "Testing openFrameworks with empty example..."
+
+cd "${OF_ROOT}/apps/myApps"
+
+# Create a test application
+TEST_APP_NAME="testOF_$$"
+sudo -u "$TARGET_USER" "${OF_ROOT}/scripts/linux/createProject.sh" -p "$TEST_APP_NAME" || true
+
+if [ -d "$TEST_APP_NAME" ]; then
+    cd "$TEST_APP_NAME"
+
+    log_info "Compiling test application..."
+    if sudo -u "$TARGET_USER" make -j${PARALLEL_JOBS} 2>&1 | tee /tmp/of_test_compile.log; then
+        log_info "Test compilation successful!"
+    else
+        log_warn "Test compilation failed, but continuing anyway"
+        log_info "Check /tmp/of_test_compile.log for details"
+    fi
+
+    # Clean up test app
+    cd ..
+    rm -rf "$TEST_APP_NAME"
+else
+    log_warn "Could not create test application, skipping test compilation"
+fi
 
 ################################################################################
 # Configure Default Addons Directory

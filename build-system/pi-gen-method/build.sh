@@ -231,24 +231,32 @@ else
     cd "$PIGEN_DIR"
 fi
 
-# Determine which branch to use based on RPI_OS_RELEASE
-# This ensures GPG keys and repository configuration match the target release
-PIGEN_BRANCH="master"
-case "${RPI_OS_RELEASE}" in
-    bookworm|bullseye)
-        # Check if the release-specific branch exists
-        if git ls-remote --heads origin "${RPI_OS_RELEASE}" | grep -q "${RPI_OS_RELEASE}"; then
-            PIGEN_BRANCH="${RPI_OS_RELEASE}"
-            log_info "Using pi-gen branch '${PIGEN_BRANCH}' for ${RPI_OS_RELEASE} release"
-        else
-            log_warn "Branch '${RPI_OS_RELEASE}' not found, using master branch"
-            log_warn "This may cause GPG signature verification issues"
-        fi
-        ;;
-    *)
-        log_info "Using pi-gen master branch for ${RPI_OS_RELEASE} release"
-        ;;
-esac
+# Determine which branch to use based on ARCHITECTURE and RPI_OS_RELEASE
+# CRITICAL: pi-gen uses different branches for 32-bit vs 64-bit builds
+# - master branch: for 32-bit (armhf) images
+# - arm64 branch: for 64-bit (aarch64) images
+if [ "$ARCHITECTURE" = "arm64" ]; then
+    PIGEN_BRANCH="arm64"
+    log_info "Using pi-gen arm64 branch for 64-bit build"
+else
+    # 32-bit: Use release-specific branch or master
+    PIGEN_BRANCH="master"
+    case "${RPI_OS_RELEASE}" in
+        bookworm|bullseye)
+            # Check if the release-specific branch exists
+            if git ls-remote --heads origin "${RPI_OS_RELEASE}" | grep -q "${RPI_OS_RELEASE}"; then
+                PIGEN_BRANCH="${RPI_OS_RELEASE}"
+                log_info "Using pi-gen branch '${PIGEN_BRANCH}' for ${RPI_OS_RELEASE} release"
+            else
+                log_warn "Branch '${RPI_OS_RELEASE}' not found, using master branch"
+                log_warn "This may cause GPG signature verification issues"
+            fi
+            ;;
+        *)
+            log_info "Using pi-gen master branch for ${RPI_OS_RELEASE} release"
+            ;;
+    esac
+fi
 
 # Checkout the appropriate branch
 git checkout "${PIGEN_BRANCH}"

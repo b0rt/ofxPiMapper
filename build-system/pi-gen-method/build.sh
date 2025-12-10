@@ -671,21 +671,33 @@ log_info "Fixing stage2/01-sys-tweaks/01-run.sh to handle missing rpi-resize.ser
 
 STAGE2_RUN_SCRIPT="${PIGEN_DIR}/stage2/01-sys-tweaks/01-run.sh"
 if [ -f "$STAGE2_RUN_SCRIPT" ]; then
-    # Check if the script tries to enable rpi-resize.service
-    if grep -q "systemctl.*enable.*rpi-resize" "$STAGE2_RUN_SCRIPT"; then
-        log_info "Found rpi-resize.service enable command, adding conditional check..."
+    log_info "Found stage2/01-sys-tweaks/01-run.sh, examining for rpi-resize.service..."
 
-        # Replace unconditional enable with conditional check
-        # Change: systemctl enable rpi-resize.service
-        # To: systemctl is-enabled rpi-resize.service || systemctl enable rpi-resize.service || true
-        sed -i 's/systemctl enable rpi-resize\.service/systemctl list-unit-files rpi-resize.service \&\& systemctl enable rpi-resize.service || echo "rpi-resize.service not found, skipping"/g' "$STAGE2_RUN_SCRIPT"
+    # Show the file to debug
+    log_info "  Script contents:"
+    cat "$STAGE2_RUN_SCRIPT" | head -50
 
-        log_info "✓ Modified rpi-resize.service enable command to be conditional"
+    # Check if the script mentions rpi-resize at all
+    if grep -qi "rpi-resize" "$STAGE2_RUN_SCRIPT"; then
+        log_info "Found rpi-resize reference, patching script..."
+
+        # Create a wrapper that checks if service exists before enabling
+        # Replace any systemctl enable rpi-resize.service command
+        sed -i 's/systemctl enable rpi-resize\.service/systemctl list-unit-files rpi-resize.service --no-pager 2>\/dev\/null | grep -q rpi-resize.service \&\& systemctl enable rpi-resize.service || echo "rpi-resize.service not found, skipping"/g' "$STAGE2_RUN_SCRIPT"
+
+        # Also handle the variant without .service extension
+        sed -i 's/systemctl enable rpi-resize\([[:space:]]\|$\)/systemctl list-unit-files rpi-resize.service --no-pager 2>\/dev\/null | grep -q rpi-resize.service \&\& systemctl enable rpi-resize || echo "rpi-resize not found, skipping"\1/g' "$STAGE2_RUN_SCRIPT"
+
+        log_info "✓ Patched rpi-resize.service commands"
+        log_info "  Modified script (first 50 lines):"
+        cat "$STAGE2_RUN_SCRIPT" | head -50
     else
-        log_info "No rpi-resize.service enable command found (may have been updated)"
+        log_info "No rpi-resize reference found in script"
     fi
 else
-    log_warn "stage2/01-sys-tweaks/01-run.sh not found - skipping rpi-resize fix"
+    log_warn "stage2/01-sys-tweaks/01-run.sh not found at: $STAGE2_RUN_SCRIPT"
+    log_warn "Listing stage2/01-sys-tweaks contents:"
+    ls -la "${PIGEN_DIR}/stage2/01-sys-tweaks/" || log_error "Directory doesn't exist"
 fi
 
 # Determine which base stages to include

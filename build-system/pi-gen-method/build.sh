@@ -602,19 +602,21 @@ for PACKAGE_FILE in "${PIGEN_DIR}/stage2/01-sys-tweaks/00-packages" "${PIGEN_DIR
         log_info "  Original contents (first 30 lines):"
         cat "$PACKAGE_FILE" | head -30
 
-        # Count packages to remove
+        # Remove lines containing any of the unavailable packages
+        # This handles cases where multiple packages are on the same line
         REMOVED_COUNT=0
         for pkg in "${UNAVAILABLE_PACKAGES[@]}"; do
-            # Check if package exists in file
-            if grep -qE "^[[:space:]]*${pkg}[[:space:]]*$" "$PACKAGE_FILE"; then
-                log_info "  Removing package: ${pkg}"
-                # Use more robust sed pattern that handles whitespace
-                sed -i "/^[[:space:]]*${pkg}[[:space:]]*$/d" "$PACKAGE_FILE"
+            # Check if package exists anywhere in the file (as a whole word)
+            if grep -qE "(^|[[:space:]])${pkg}([[:space:]]|$)" "$PACKAGE_FILE"; then
+                log_info "  Removing line(s) containing package: ${pkg}"
+                # Remove any line that contains this package (as a whole word)
+                # Pattern matches: start of line OR whitespace, then package name, then whitespace OR end of line
+                sed -i "/\(^\|[[:space:]]\)${pkg}\([[:space:]]\|$\)/d" "$PACKAGE_FILE"
                 REMOVED_COUNT=$((REMOVED_COUNT + 1))
             fi
         done
 
-        log_info "  Removed ${REMOVED_COUNT} packages from $(basename "$PACKAGE_FILE")"
+        log_info "  Removed ${REMOVED_COUNT} package line(s) from $(basename "$PACKAGE_FILE")"
         log_info "  Modified contents (first 30 lines):"
         cat "$PACKAGE_FILE" | head -30
         log_info "✓ Processed $(basename "$PACKAGE_FILE")"
@@ -636,8 +638,10 @@ for PACKAGE_FILE in "${PIGEN_DIR}/stage2/01-sys-tweaks/00-packages" "${PIGEN_DIR
     if [ -f "$PACKAGE_FILE" ]; then
         log_info "Checking $(basename "$PACKAGE_FILE")..."
         for pkg in "${UNAVAILABLE_PACKAGES[@]}"; do
-            if grep -qE "^[[:space:]]*${pkg}[[:space:]]*$" "$PACKAGE_FILE"; then
+            # Check if package exists anywhere in the file (as a whole word)
+            if grep -qE "(^|[[:space:]])${pkg}([[:space:]]|$)" "$PACKAGE_FILE"; then
                 log_error "  ✗ Package '${pkg}' still present after removal!"
+                log_error "  Found in line: $(grep -E "(^|[[:space:]])${pkg}([[:space:]]|$)" "$PACKAGE_FILE")"
                 exit 1
             else
                 log_info "  ✓ ${pkg} removed successfully"

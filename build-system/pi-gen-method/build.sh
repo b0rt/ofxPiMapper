@@ -579,6 +579,8 @@ UNAVAILABLE_PACKAGES=(
     "rpi-cloud-init-mods"
     "rpd-wayland-core"
     "rpd-x-core"
+    "rpd-preferences"
+    "rpd-theme"
 )
 
 # Find and fix ALL package files in stage2 and stage3 subdirectories

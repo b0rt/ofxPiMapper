@@ -216,20 +216,45 @@ if [ "$CLEAN_BUILD" = true ]; then
 fi
 
 ################################################################################
+# Git Retry Helper Function
+################################################################################
+
+# Retry git operations with exponential backoff
+# Usage: git_retry <git command with args>
+git_retry() {
+    local max_attempts=4
+    local attempt=1
+    local delay=2
+
+    while [ $attempt -le $max_attempts ]; do
+        if [ $attempt -gt 1 ]; then
+            log_warn "Retry attempt $attempt of $max_attempts after ${delay}s delay..."
+            sleep $delay
+        fi
+
+        # Execute the git command
+        if "$@"; then
+            return 0
+        fi
+
+        log_warn "Git command failed: $*"
+
+        if [ $attempt -lt $max_attempts ]; then
+            delay=$((delay * 2))  # Exponential backoff: 2s, 4s, 8s, 16s
+        fi
+
+        attempt=$((attempt + 1))
+    done
+
+    log_error "Git command failed after $max_attempts attempts: $*"
+    return 1
+}
+
+################################################################################
 # Clone/Update pi-gen
 ################################################################################
 
 log_progress "Setting up pi-gen..."
-
-if [ -d "$PIGEN_DIR" ]; then
-    log_info "Updating existing pi-gen repository..."
-    cd "$PIGEN_DIR"
-    git fetch origin
-else
-    log_info "Cloning pi-gen repository..."
-    git clone https://github.com/RPi-Distro/pi-gen.git "$PIGEN_DIR"
-    cd "$PIGEN_DIR"
-fi
 
 # Determine which branch to use based on ARCHITECTURE and RPI_OS_RELEASE
 # CRITICAL: pi-gen uses different branches for 32-bit vs 64-bit builds
@@ -237,30 +262,59 @@ fi
 # - arm64 branch: for 64-bit (aarch64) images
 if [ "$ARCHITECTURE" = "arm64" ]; then
     PIGEN_BRANCH="arm64"
-    log_info "Using pi-gen arm64 branch for 64-bit build"
+    log_info "Target branch: arm64 (for 64-bit build)"
 else
     # 32-bit: Use release-specific branch or master
     PIGEN_BRANCH="master"
-    case "${RPI_OS_RELEASE}" in
-        bookworm|bullseye)
-            # Check if the release-specific branch exists
-            if git ls-remote --heads origin "${RPI_OS_RELEASE}" | grep -q "${RPI_OS_RELEASE}"; then
-                PIGEN_BRANCH="${RPI_OS_RELEASE}"
-                log_info "Using pi-gen branch '${PIGEN_BRANCH}' for ${RPI_OS_RELEASE} release"
-            else
-                log_warn "Branch '${RPI_OS_RELEASE}' not found, using master branch"
-                log_warn "This may cause GPG signature verification issues"
-            fi
-            ;;
-        *)
-            log_info "Using pi-gen master branch for ${RPI_OS_RELEASE} release"
-            ;;
-    esac
+    log_info "Target branch: master (for 32-bit build, ${RPI_OS_RELEASE})"
 fi
 
-# Checkout the appropriate branch
-git checkout "${PIGEN_BRANCH}"
-git pull origin "${PIGEN_BRANCH}"
+if [ -d "$PIGEN_DIR" ]; then
+    log_info "Updating existing pi-gen repository..."
+    cd "$PIGEN_DIR"
+    git_retry git fetch origin
+    git checkout "${PIGEN_BRANCH}"
+    git_retry git pull origin "${PIGEN_BRANCH}"
+else
+    log_info "Cloning pi-gen repository (branch: ${PIGEN_BRANCH})..."
+
+    # Clone with retry logic that handles partial failures
+    max_attempts=4
+    attempt=1
+    delay=2
+
+    while [ $attempt -le $max_attempts ]; do
+        # Clean up any partial clone from previous failed attempt
+        if [ -d "$PIGEN_DIR" ]; then
+            log_warn "Removing partial clone from previous failed attempt..."
+            rm -rf "$PIGEN_DIR"
+        fi
+
+        if [ $attempt -gt 1 ]; then
+            log_warn "Clone retry attempt $attempt of $max_attempts after ${delay}s delay..."
+            sleep $delay
+        fi
+
+        # Attempt the clone
+        if git clone --depth 1 --branch "${PIGEN_BRANCH}" https://github.com/RPi-Distro/pi-gen.git "$PIGEN_DIR"; then
+            log_info "✓ pi-gen cloned successfully"
+            break
+        fi
+
+        log_warn "Git clone failed on attempt $attempt"
+
+        if [ $attempt -lt $max_attempts ]; then
+            delay=$((delay * 2))  # Exponential backoff: 2s, 4s, 8s, 16s
+        else
+            log_error "Git clone failed after $max_attempts attempts"
+            exit 1
+        fi
+
+        attempt=$((attempt + 1))
+    done
+
+    cd "$PIGEN_DIR"
+fi
 
 PIGEN_COMMIT=$(git rev-parse --short HEAD)
 log_info "Using pi-gen commit: $PIGEN_COMMIT (branch: $PIGEN_BRANCH)"
@@ -514,22 +568,162 @@ else
     exit 1
 fi
 
-# Fix stage2 package list - remove unavailable rpi-* packages
-log_info "Fixing stage2 package list to remove unavailable packages..."
+# Fix stage2 and stage3 package lists - remove unavailable rpi-* and rpd-* packages
+log_info "Fixing stage2 and stage3 package lists to remove unavailable packages..."
 
-STAGE2_PACKAGES="${PIGEN_DIR}/stage2/01-sys-tweaks/00-packages"
-if [ -f "$STAGE2_PACKAGES" ]; then
-    # Remove packages that don't exist in Bookworm repositories
-    # These were likely removed or renamed in newer Debian/Raspbian versions
-    sed -i '/^rpi-swap$/d' "$STAGE2_PACKAGES"
-    sed -i '/^rpi-loop-utils$/d' "$STAGE2_PACKAGES"
-    sed -i '/^rpi-usb-gadget$/d' "$STAGE2_PACKAGES"
+# List of unavailable packages to remove
+UNAVAILABLE_PACKAGES=(
+    "rpi-swap"
+    "rpi-loop-utils"
+    "rpi-usb-gadget"
+    "rpi-cloud-init-mods"
+    "rpd-wayland-core"
+    "rpd-x-core"
+    "rpd-preferences"
+    "rpd-theme"
+)
 
-    log_info "✓ Removed unavailable packages: rpi-swap, rpi-loop-utils, rpi-usb-gadget"
-    log_info "  Modified package list contents:"
-    cat "$STAGE2_PACKAGES" | head -20
+# Find and fix ALL package files in stage2 and stage3 subdirectories
+log_info "Searching for all package files in stage2 and stage3..."
+PACKAGE_FILES=$(find "${PIGEN_DIR}/stage2" "${PIGEN_DIR}/stage3" -type f \( -name "00-packages" -o -name "00-packages-nr" \) 2>/dev/null)
+
+if [ -z "$PACKAGE_FILES" ]; then
+    log_error "No package files found in stage2 or stage3!"
+    exit 1
+fi
+
+log_info "Found package files:"
+echo "$PACKAGE_FILES"
+
+# Process each package file found
+FILES_PROCESSED=0
+for PACKAGE_FILE in $PACKAGE_FILES; do
+    if [ -f "$PACKAGE_FILE" ]; then
+        FILES_PROCESSED=$((FILES_PROCESSED + 1))
+        log_info "Processing package file: $PACKAGE_FILE"
+
+        # Show original contents
+        log_info "  Original contents (first 30 lines):"
+        cat "$PACKAGE_FILE" | head -30
+
+        # Remove individual packages from lines (not entire lines)
+        # This handles cases where multiple packages are on the same line
+        REMOVED_COUNT=0
+        for pkg in "${UNAVAILABLE_PACKAGES[@]}"; do
+            # Check if package exists anywhere in the file (as a whole word)
+            if grep -qE "(^|[[:space:]])${pkg}([[:space:]]|$)" "$PACKAGE_FILE"; then
+                log_info "  Removing package: ${pkg}"
+
+                # Remove the package name from lines, preserving other packages
+                # This handles multiple cases:
+                # - "pkg" alone on line -> line becomes empty
+                # - "pkg other" -> becomes "other"
+                # - "other pkg" -> becomes "other"
+                # - "foo pkg bar" -> becomes "foo bar"
+
+                # First, remove package at start of line followed by space
+                sed -i "s/^${pkg}[[:space:]]\+//g" "$PACKAGE_FILE"
+                # Remove package at end of line preceded by space
+                sed -i "s/[[:space:]]\+${pkg}$//g" "$PACKAGE_FILE"
+                # Remove package in middle of line (surrounded by spaces)
+                sed -i "s/[[:space:]]\+${pkg}[[:space:]]\+/ /g" "$PACKAGE_FILE"
+                # Remove package alone on line
+                sed -i "/^${pkg}$/d" "$PACKAGE_FILE"
+                # Remove any lines that became empty or whitespace-only
+                sed -i '/^[[:space:]]*$/d' "$PACKAGE_FILE"
+
+                REMOVED_COUNT=$((REMOVED_COUNT + 1))
+            fi
+        done
+
+        log_info "  Removed ${REMOVED_COUNT} package(s) from $(basename "$PACKAGE_FILE")"
+        log_info "  Modified contents (first 30 lines):"
+        cat "$PACKAGE_FILE" | head -30
+        log_info "✓ Processed $PACKAGE_FILE"
+    fi
+done
+
+if [ $FILES_PROCESSED -eq 0 ]; then
+    log_error "No package files were processed!"
+    exit 1
+fi
+
+log_info "✓ Processed $FILES_PROCESSED package file(s) in stage2 and stage3"
+
+# Verify the fix worked
+log_info "Final verification of package removals..."
+for PACKAGE_FILE in $PACKAGE_FILES; do
+    if [ -f "$PACKAGE_FILE" ]; then
+        log_info "Checking $(basename "$PACKAGE_FILE") in $(dirname "$PACKAGE_FILE")..."
+        for pkg in "${UNAVAILABLE_PACKAGES[@]}"; do
+            # Check if package exists anywhere in the file (as a whole word)
+            if grep -qE "(^|[[:space:]])${pkg}([[:space:]]|$)" "$PACKAGE_FILE"; then
+                log_error "  ✗ Package '${pkg}' still present after removal!"
+                log_error "  Found in line: $(grep -E "(^|[[:space:]])${pkg}([[:space:]]|$)" "$PACKAGE_FILE")"
+                exit 1
+            fi
+        done
+        log_info "  ✓ All problematic packages removed from $(basename "$PACKAGE_FILE")"
+    fi
+done
+
+# Fix stage2/01-sys-tweaks/01-run.sh to handle missing rpi-resize.service
+log_info "Fixing stage2/01-sys-tweaks/01-run.sh to handle missing rpi-resize.service..."
+
+STAGE2_RUN_SCRIPT="${PIGEN_DIR}/stage2/01-sys-tweaks/01-run.sh"
+if [ -f "$STAGE2_RUN_SCRIPT" ]; then
+    log_info "Found stage2/01-sys-tweaks/01-run.sh, examining for rpi-resize.service..."
+
+    # Show the file to debug
+    log_info "  Script contents:"
+    cat "$STAGE2_RUN_SCRIPT" | head -50
+
+    # Check if the script mentions rpi-resize at all
+    if grep -qi "rpi-resize" "$STAGE2_RUN_SCRIPT"; then
+        log_info "Found rpi-resize reference, patching script..."
+
+        # Create a wrapper that checks if service exists before enabling
+        # Replace any systemctl enable rpi-resize.service command
+        sed -i 's/systemctl enable rpi-resize\.service/systemctl list-unit-files rpi-resize.service --no-pager 2>\/dev\/null | grep -q rpi-resize.service \&\& systemctl enable rpi-resize.service || echo "rpi-resize.service not found, skipping"/g' "$STAGE2_RUN_SCRIPT"
+
+        # Also handle the variant without .service extension
+        sed -i 's/systemctl enable rpi-resize\([[:space:]]\|$\)/systemctl list-unit-files rpi-resize.service --no-pager 2>\/dev\/null | grep -q rpi-resize.service \&\& systemctl enable rpi-resize || echo "rpi-resize not found, skipping"\1/g' "$STAGE2_RUN_SCRIPT"
+
+        log_info "✓ Patched rpi-resize.service commands"
+        log_info "  Modified script (first 50 lines):"
+        cat "$STAGE2_RUN_SCRIPT" | head -50
+    else
+        log_info "No rpi-resize reference found in script"
+    fi
 else
-    log_warn "stage2/01-sys-tweaks/00-packages not found - skipping package removal"
+    log_warn "stage2/01-sys-tweaks/01-run.sh not found at: $STAGE2_RUN_SCRIPT"
+    log_warn "Listing stage2/01-sys-tweaks contents:"
+    ls -la "${PIGEN_DIR}/stage2/01-sys-tweaks/" || log_error "Directory doesn't exist"
+fi
+
+# Fix stage3/01-print-support/00-run.sh to handle missing lpadmin group
+log_info "Fixing stage3/01-print-support/00-run.sh to handle missing lpadmin group..."
+
+STAGE3_PRINT_SCRIPT="${PIGEN_DIR}/stage3/01-print-support/00-run.sh"
+if [ -f "$STAGE3_PRINT_SCRIPT" ]; then
+    log_info "Found stage3/01-print-support/00-run.sh, patching for lpadmin group..."
+
+    # Show the original file
+    log_info "  Original script contents:"
+    cat "$STAGE3_PRINT_SCRIPT"
+
+    # Replace adduser command to check if lpadmin group exists first
+    # Pattern: adduser "$FIRST_USER_NAME" lpadmin
+    # Replace with: getent group lpadmin >/dev/null && adduser "$FIRST_USER_NAME" lpadmin || echo "lpadmin group not found, skipping"
+    sed -i 's/adduser "\$FIRST_USER_NAME" lpadmin/getent group lpadmin >\/dev\/null \&\& adduser "\$FIRST_USER_NAME" lpadmin || echo "lpadmin group not found (CUPS not installed), skipping"/g' "$STAGE3_PRINT_SCRIPT"
+
+    log_info "✓ Patched lpadmin group addition to be conditional"
+    log_info "  Modified script contents:"
+    cat "$STAGE3_PRINT_SCRIPT"
+else
+    log_warn "stage3/01-print-support/00-run.sh not found at: $STAGE3_PRINT_SCRIPT"
+    log_warn "Listing stage3 contents:"
+    ls -la "${PIGEN_DIR}/stage3/" 2>/dev/null || log_error "Directory doesn't exist"
 fi
 
 # Determine which base stages to include

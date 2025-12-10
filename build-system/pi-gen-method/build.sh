@@ -568,32 +568,32 @@ else
     exit 1
 fi
 
-# Fix stage2 package list - remove unavailable rpi-* packages
-log_info "Fixing stage2 package list to remove unavailable packages..."
+# Fix stage2 package lists - remove unavailable rpi-* packages
+log_info "Fixing stage2 package lists to remove unavailable packages..."
 
 # List of unavailable packages to remove
 UNAVAILABLE_PACKAGES=(
     "rpi-swap"
     "rpi-loop-utils"
     "rpi-usb-gadget"
+    "rpi-cloud-init-mods"
 )
 
-# Check if stage2 directory exists
-log_info "Checking for stage2 directory: ${PIGEN_DIR}/stage2/01-sys-tweaks/"
-if [ ! -d "${PIGEN_DIR}/stage2/01-sys-tweaks/" ]; then
-    log_error "stage2/01-sys-tweaks directory not found!"
-    log_error "Contents of ${PIGEN_DIR}/stage2:"
-    ls -la "${PIGEN_DIR}/stage2" || log_error "stage2 directory doesn't exist"
+# Find and fix ALL package files in stage2 subdirectories
+log_info "Searching for all package files in stage2..."
+PACKAGE_FILES=$(find "${PIGEN_DIR}/stage2" -type f -name "00-packages" -o -name "00-packages-nr")
+
+if [ -z "$PACKAGE_FILES" ]; then
+    log_error "No package files found in stage2!"
     exit 1
 fi
 
-# List all package files found
-log_info "Looking for package files in ${PIGEN_DIR}/stage2/01-sys-tweaks/"
-ls -la "${PIGEN_DIR}/stage2/01-sys-tweaks/" | grep -E "packages" || log_warn "No package files found"
+log_info "Found package files:"
+echo "$PACKAGE_FILES"
 
-# Process each package file
+# Process each package file found
 FILES_PROCESSED=0
-for PACKAGE_FILE in "${PIGEN_DIR}/stage2/01-sys-tweaks/00-packages" "${PIGEN_DIR}/stage2/01-sys-tweaks/00-packages-nr"; do
+for PACKAGE_FILE in $PACKAGE_FILES; do
     if [ -f "$PACKAGE_FILE" ]; then
         FILES_PROCESSED=$((FILES_PROCESSED + 1))
         log_info "Processing package file: $PACKAGE_FILE"
@@ -635,9 +635,7 @@ for PACKAGE_FILE in "${PIGEN_DIR}/stage2/01-sys-tweaks/00-packages" "${PIGEN_DIR
         log_info "  Removed ${REMOVED_COUNT} package(s) from $(basename "$PACKAGE_FILE")"
         log_info "  Modified contents (first 30 lines):"
         cat "$PACKAGE_FILE" | head -30
-        log_info "✓ Processed $(basename "$PACKAGE_FILE")"
-    else
-        log_warn "Package file not found: $PACKAGE_FILE"
+        log_info "✓ Processed $PACKAGE_FILE"
     fi
 done
 
@@ -646,23 +644,22 @@ if [ $FILES_PROCESSED -eq 0 ]; then
     exit 1
 fi
 
-log_info "✓ Processed $FILES_PROCESSED package file(s)"
+log_info "✓ Processed $FILES_PROCESSED package file(s) in stage2"
 
 # Verify the fix worked
 log_info "Final verification of package removals..."
-for PACKAGE_FILE in "${PIGEN_DIR}/stage2/01-sys-tweaks/00-packages" "${PIGEN_DIR}/stage2/01-sys-tweaks/00-packages-nr"; do
+for PACKAGE_FILE in $PACKAGE_FILES; do
     if [ -f "$PACKAGE_FILE" ]; then
-        log_info "Checking $(basename "$PACKAGE_FILE")..."
+        log_info "Checking $(basename "$PACKAGE_FILE") in $(dirname "$PACKAGE_FILE")..."
         for pkg in "${UNAVAILABLE_PACKAGES[@]}"; do
             # Check if package exists anywhere in the file (as a whole word)
             if grep -qE "(^|[[:space:]])${pkg}([[:space:]]|$)" "$PACKAGE_FILE"; then
                 log_error "  ✗ Package '${pkg}' still present after removal!"
                 log_error "  Found in line: $(grep -E "(^|[[:space:]])${pkg}([[:space:]]|$)" "$PACKAGE_FILE")"
                 exit 1
-            else
-                log_info "  ✓ ${pkg} removed successfully"
             fi
         done
+        log_info "  ✓ All problematic packages removed from $(basename "$PACKAGE_FILE")"
     fi
 done
 

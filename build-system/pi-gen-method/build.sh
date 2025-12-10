@@ -666,6 +666,28 @@ for PACKAGE_FILE in "${PIGEN_DIR}/stage2/01-sys-tweaks/00-packages" "${PIGEN_DIR
     fi
 done
 
+# Fix stage2/01-sys-tweaks/01-run.sh to handle missing rpi-resize.service
+log_info "Fixing stage2/01-sys-tweaks/01-run.sh to handle missing rpi-resize.service..."
+
+STAGE2_RUN_SCRIPT="${PIGEN_DIR}/stage2/01-sys-tweaks/01-run.sh"
+if [ -f "$STAGE2_RUN_SCRIPT" ]; then
+    # Check if the script tries to enable rpi-resize.service
+    if grep -q "systemctl.*enable.*rpi-resize" "$STAGE2_RUN_SCRIPT"; then
+        log_info "Found rpi-resize.service enable command, adding conditional check..."
+
+        # Replace unconditional enable with conditional check
+        # Change: systemctl enable rpi-resize.service
+        # To: systemctl is-enabled rpi-resize.service || systemctl enable rpi-resize.service || true
+        sed -i 's/systemctl enable rpi-resize\.service/systemctl list-unit-files rpi-resize.service \&\& systemctl enable rpi-resize.service || echo "rpi-resize.service not found, skipping"/g' "$STAGE2_RUN_SCRIPT"
+
+        log_info "✓ Modified rpi-resize.service enable command to be conditional"
+    else
+        log_info "No rpi-resize.service enable command found (may have been updated)"
+    fi
+else
+    log_warn "stage2/01-sys-tweaks/01-run.sh not found - skipping rpi-resize fix"
+fi
+
 # Determine which base stages to include
 if [ "$BASE_IMAGE" = "desktop" ]; then
     # Desktop: keep stage4 (desktop environment), add stage5 (custom ofxPiMapper)

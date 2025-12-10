@@ -68,6 +68,7 @@ apt-get install -y \
 log_info "Installing OpenGL ES and graphics libraries..."
 apt-get install -y \
     libgles2-mesa-dev \
+    libglu1-mesa-dev \
     libglfw3-dev \
     libegl1-mesa-dev \
     mesa-utils \

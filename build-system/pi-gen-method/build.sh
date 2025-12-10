@@ -602,21 +602,37 @@ for PACKAGE_FILE in "${PIGEN_DIR}/stage2/01-sys-tweaks/00-packages" "${PIGEN_DIR
         log_info "  Original contents (first 30 lines):"
         cat "$PACKAGE_FILE" | head -30
 
-        # Remove lines containing any of the unavailable packages
+        # Remove individual packages from lines (not entire lines)
         # This handles cases where multiple packages are on the same line
         REMOVED_COUNT=0
         for pkg in "${UNAVAILABLE_PACKAGES[@]}"; do
             # Check if package exists anywhere in the file (as a whole word)
             if grep -qE "(^|[[:space:]])${pkg}([[:space:]]|$)" "$PACKAGE_FILE"; then
-                log_info "  Removing line(s) containing package: ${pkg}"
-                # Remove any line that contains this package (as a whole word)
-                # Pattern matches: start of line OR whitespace, then package name, then whitespace OR end of line
-                sed -i "/\(^\|[[:space:]]\)${pkg}\([[:space:]]\|$\)/d" "$PACKAGE_FILE"
+                log_info "  Removing package: ${pkg}"
+
+                # Remove the package name from lines, preserving other packages
+                # This handles multiple cases:
+                # - "pkg" alone on line -> line becomes empty
+                # - "pkg other" -> becomes "other"
+                # - "other pkg" -> becomes "other"
+                # - "foo pkg bar" -> becomes "foo bar"
+
+                # First, remove package at start of line followed by space
+                sed -i "s/^${pkg}[[:space:]]\+//g" "$PACKAGE_FILE"
+                # Remove package at end of line preceded by space
+                sed -i "s/[[:space:]]\+${pkg}$//g" "$PACKAGE_FILE"
+                # Remove package in middle of line (surrounded by spaces)
+                sed -i "s/[[:space:]]\+${pkg}[[:space:]]\+/ /g" "$PACKAGE_FILE"
+                # Remove package alone on line
+                sed -i "/^${pkg}$/d" "$PACKAGE_FILE"
+                # Remove any lines that became empty or whitespace-only
+                sed -i '/^[[:space:]]*$/d' "$PACKAGE_FILE"
+
                 REMOVED_COUNT=$((REMOVED_COUNT + 1))
             fi
         done
 
-        log_info "  Removed ${REMOVED_COUNT} package line(s) from $(basename "$PACKAGE_FILE")"
+        log_info "  Removed ${REMOVED_COUNT} package(s) from $(basename "$PACKAGE_FILE")"
         log_info "  Modified contents (first 30 lines):"
         cat "$PACKAGE_FILE" | head -30
         log_info "✓ Processed $(basename "$PACKAGE_FILE")"

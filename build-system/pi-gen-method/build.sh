@@ -701,6 +701,31 @@ else
     ls -la "${PIGEN_DIR}/stage2/01-sys-tweaks/" || log_error "Directory doesn't exist"
 fi
 
+# Fix stage3/01-print-support/00-run.sh to handle missing lpadmin group
+log_info "Fixing stage3/01-print-support/00-run.sh to handle missing lpadmin group..."
+
+STAGE3_PRINT_SCRIPT="${PIGEN_DIR}/stage3/01-print-support/00-run.sh"
+if [ -f "$STAGE3_PRINT_SCRIPT" ]; then
+    log_info "Found stage3/01-print-support/00-run.sh, patching for lpadmin group..."
+
+    # Show the original file
+    log_info "  Original script contents:"
+    cat "$STAGE3_PRINT_SCRIPT"
+
+    # Replace adduser command to check if lpadmin group exists first
+    # Pattern: adduser "$FIRST_USER_NAME" lpadmin
+    # Replace with: getent group lpadmin >/dev/null && adduser "$FIRST_USER_NAME" lpadmin || echo "lpadmin group not found, skipping"
+    sed -i 's/adduser "\$FIRST_USER_NAME" lpadmin/getent group lpadmin >\/dev\/null \&\& adduser "\$FIRST_USER_NAME" lpadmin || echo "lpadmin group not found (CUPS not installed), skipping"/g' "$STAGE3_PRINT_SCRIPT"
+
+    log_info "✓ Patched lpadmin group addition to be conditional"
+    log_info "  Modified script contents:"
+    cat "$STAGE3_PRINT_SCRIPT"
+else
+    log_warn "stage3/01-print-support/00-run.sh not found at: $STAGE3_PRINT_SCRIPT"
+    log_warn "Listing stage3 contents:"
+    ls -la "${PIGEN_DIR}/stage3/" 2>/dev/null || log_error "Directory doesn't exist"
+fi
+
 # Determine which base stages to include
 if [ "$BASE_IMAGE" = "desktop" ]; then
     # Desktop: keep stage4 (desktop environment), add stage5 (custom ofxPiMapper)

@@ -87,7 +87,20 @@ If you need functionality from these packages, consider:
    sudo apt-get install rpi-swap rpi-loop-utils
    ```
 
-3. **Custom Scripts**: Replicate functionality using shell scripts in stage customizations
+3. **Replace with Standard Debian Packages**: Add equivalent Debian packages to your custom stage
+   ```bash
+   # For printing support (replaces rpd-* CUPS functionality):
+   cups cups-client system-config-printer
+
+   # For desktop environment (replaces rpd-wayland-core/rpd-x-core):
+   xserver-xorg xserver-xorg-video-fbdev
+   lightdm lxde-core
+
+   # For desktop theming (replaces rpd-theme/rpd-preferences):
+   lxappearance
+   ```
+
+4. **Custom Scripts**: Replicate functionality using shell scripts in stage customizations
 
 ## Related Issues
 
@@ -104,9 +117,13 @@ This package removal addresses the following build failures:
 
 ## Additional Fixes
 
-The build script also includes a fix for the `rpi-resize.service` error:
+The build script also includes fixes for related errors caused by missing packages:
+
+### 1. rpi-resize.service Fix
 
 **Issue**: `Failed to enable unit, unit rpi-resize.service does not exist`
+
+**Location**: `stage2/01-sys-tweaks/01-run.sh`
 
 **Fix**: Conditionally enables the service only if it exists:
 ```bash
@@ -115,6 +132,23 @@ systemctl list-unit-files rpi-resize.service --no-pager 2>/dev/null | \
   systemctl enable rpi-resize.service || \
   echo "rpi-resize.service not found, skipping"
 ```
+
+### 2. lpadmin Group Fix
+
+**Issue**: `adduser: The group 'lpadmin' does not exist.`
+
+**Location**: `stage3/01-print-support/00-run.sh`
+
+**Root Cause**: The `lpadmin` group is created by the CUPS printing system, which is normally bundled in the `rpd-*` desktop packages. Since we remove all `rpd-*` packages (rpd-wayland-core, rpd-x-core, rpd-preferences, rpd-theme), CUPS is not installed and the lpadmin group doesn't exist.
+
+**Fix**: Conditionally adds the user to lpadmin group only if it exists:
+```bash
+getent group lpadmin >/dev/null && \
+  adduser "$FIRST_USER_NAME" lpadmin || \
+  echo "lpadmin group not found (CUPS not installed), skipping"
+```
+
+**Note**: If you need printing support, you should add standard Debian CUPS packages to your custom stage. See the Alternative Solutions section for details.
 
 ## References
 

@@ -277,8 +277,42 @@ if [ -d "$PIGEN_DIR" ]; then
     git_retry git pull origin "${PIGEN_BRANCH}"
 else
     log_info "Cloning pi-gen repository (branch: ${PIGEN_BRANCH})..."
-    # Clone specific branch with shallow depth for faster downloads
-    git_retry git clone --depth 1 --branch "${PIGEN_BRANCH}" https://github.com/RPi-Distro/pi-gen.git "$PIGEN_DIR"
+
+    # Clone with retry logic that handles partial failures
+    max_attempts=4
+    attempt=1
+    delay=2
+
+    while [ $attempt -le $max_attempts ]; do
+        # Clean up any partial clone from previous failed attempt
+        if [ -d "$PIGEN_DIR" ]; then
+            log_warn "Removing partial clone from previous failed attempt..."
+            rm -rf "$PIGEN_DIR"
+        fi
+
+        if [ $attempt -gt 1 ]; then
+            log_warn "Clone retry attempt $attempt of $max_attempts after ${delay}s delay..."
+            sleep $delay
+        fi
+
+        # Attempt the clone
+        if git clone --depth 1 --branch "${PIGEN_BRANCH}" https://github.com/RPi-Distro/pi-gen.git "$PIGEN_DIR"; then
+            log_info "✓ pi-gen cloned successfully"
+            break
+        fi
+
+        log_warn "Git clone failed on attempt $attempt"
+
+        if [ $attempt -lt $max_attempts ]; then
+            delay=$((delay * 2))  # Exponential backoff: 2s, 4s, 8s, 16s
+        else
+            log_error "Git clone failed after $max_attempts attempts"
+            exit 1
+        fi
+
+        attempt=$((attempt + 1))
+    done
+
     cd "$PIGEN_DIR"
 fi
 

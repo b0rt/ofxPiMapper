@@ -568,8 +568,8 @@ else
     exit 1
 fi
 
-# Fix stage2 package lists - remove unavailable rpi-* packages
-log_info "Fixing stage2 package lists to remove unavailable packages..."
+# Fix stage2 and stage3 package lists - remove unavailable rpi-* and rpd-* packages
+log_info "Fixing stage2 and stage3 package lists to remove unavailable packages..."
 
 # List of unavailable packages to remove
 UNAVAILABLE_PACKAGES=(
@@ -577,14 +577,16 @@ UNAVAILABLE_PACKAGES=(
     "rpi-loop-utils"
     "rpi-usb-gadget"
     "rpi-cloud-init-mods"
+    "rpd-wayland-core"
+    "rpd-x-core"
 )
 
-# Find and fix ALL package files in stage2 subdirectories
-log_info "Searching for all package files in stage2..."
-PACKAGE_FILES=$(find "${PIGEN_DIR}/stage2" -type f -name "00-packages" -o -name "00-packages-nr")
+# Find and fix ALL package files in stage2 and stage3 subdirectories
+log_info "Searching for all package files in stage2 and stage3..."
+PACKAGE_FILES=$(find "${PIGEN_DIR}/stage2" "${PIGEN_DIR}/stage3" -type f \( -name "00-packages" -o -name "00-packages-nr" \) 2>/dev/null)
 
 if [ -z "$PACKAGE_FILES" ]; then
-    log_error "No package files found in stage2!"
+    log_error "No package files found in stage2 or stage3!"
     exit 1
 fi
 
@@ -644,7 +646,7 @@ if [ $FILES_PROCESSED -eq 0 ]; then
     exit 1
 fi
 
-log_info "✓ Processed $FILES_PROCESSED package file(s) in stage2"
+log_info "✓ Processed $FILES_PROCESSED package file(s) in stage2 and stage3"
 
 # Verify the fix worked
 log_info "Final verification of package removals..."

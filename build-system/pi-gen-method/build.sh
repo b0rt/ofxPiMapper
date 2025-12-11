@@ -944,7 +944,8 @@ apt-get install -y \
     libswscale-dev \
     libv4l-dev \
     libxvidcore-dev \
-    libx264-dev
+    libx264-dev \
+    liburiparser-dev
 
 ################################################################################
 # Install Utilities

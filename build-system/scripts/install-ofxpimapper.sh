@@ -78,6 +78,10 @@ fi
 
 log_info "openFrameworks found at ${OF_ROOT}"
 
+# Ensure proper ownership of openFrameworks directory for target user
+log_info "Setting ownership of openFrameworks directory to ${TARGET_USER}..."
+chown -R "${TARGET_USER}:${TARGET_USER}" "$OF_ROOT"
+
 ################################################################################
 # Install Required Addons
 ################################################################################

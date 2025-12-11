@@ -1092,9 +1092,18 @@ mkdir -p "${STAGE_DIR}/04-install-ofxpimapper/files"
 cp "${BUILD_SYSTEM_DIR}/scripts/install-ofxpimapper.sh" \
    "${STAGE_DIR}/04-install-ofxpimapper/files/install-ofxpimapper.sh"
 
-cat > "${STAGE_DIR}/04-install-ofxpimapper/00-run-chroot.sh" <<'EOFRUN'
+cat > "${STAGE_DIR}/04-install-ofxpimapper/00-run-chroot.sh" <<EOFRUN
 #!/bin/bash -e
-bash /tmp/install-ofxpimapper.sh
+# Export ofxPiMapper configuration from build config
+export RPI_USERNAME="${RPI_USERNAME}"
+export OF_ROOT="${OF_ROOT}"
+export OFXPIMAPPER_REPO="${OFXPIMAPPER_REPO}"
+export OFXPIMAPPER_BRANCH="${OFXPIMAPPER_BRANCH}"
+export COMPILE_EXAMPLE="${COMPILE_EXAMPLE}"
+export ADDITIONAL_EXAMPLES="${ADDITIONAL_EXAMPLES}"
+export INSTALL_OPTIONAL_ADDONS="${INSTALL_OPTIONAL_ADDONS}"
+export PARALLEL_JOBS="${PARALLEL_JOBS}"
+bash /tmp/install-ofxpimapper.sh "${RPI_USERNAME}"
 EOFRUN
 
 chmod +x "${STAGE_DIR}/04-install-ofxpimapper/00-run.sh"

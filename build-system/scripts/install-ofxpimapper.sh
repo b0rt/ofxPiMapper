@@ -93,9 +93,18 @@ log_progress "Installing required addons..."
 
 # Define required addons
 # Format: "repo_url|branch|addon_name"
-declare -a REQUIRED_ADDONS_LIST=(
-    "https://github.com/pierrep/ofxOMXPlayer.git|SeekingFix|ofxOMXPlayer"
-)
+declare -a REQUIRED_ADDONS_LIST=()
+
+# Add Raspberry Pi-specific addons only on actual hardware
+# ofxOMXPlayer is the hardware-accelerated video player for Raspberry Pi
+if [ -f /proc/device-tree/model ] && grep -q "Raspberry Pi" /proc/device-tree/model 2>/dev/null; then
+    log_info "Detected Raspberry Pi hardware, adding ofxOMXPlayer..."
+    REQUIRED_ADDONS_LIST+=(
+        "https://github.com/pierrep/ofxOMXPlayer.git|master|ofxOMXPlayer"
+    )
+else
+    log_info "Not running on Raspberry Pi hardware, skipping ofxOMXPlayer (hardware-specific)"
+fi
 
 # Add optional addons if configured
 if [ "${INSTALL_OPTIONAL_ADDONS:-true}" = "true" ]; then

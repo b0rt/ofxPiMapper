@@ -293,25 +293,31 @@ compile_example() {
     # Clean previous builds
     sudo -u "$TARGET_USER" make clean || true
 
-    # Compile
+    # Compile (use pipefail to catch make errors even with tee)
+    set -o pipefail
     if sudo -u "$TARGET_USER" make -j${PARALLEL_JOBS} 2>&1 | tee "/tmp/compile_${example_name}.log"; then
-        log_info "✓ ${example_name} compiled successfully"
+        set +o pipefail
 
         # Verify binary
         local binary_path="bin/${example_name}"
         if [ -f "$binary_path" ]; then
             chmod +x "$binary_path"
             chown "${TARGET_USER}:${TARGET_USER}" "$binary_path"
+            log_info "✓ ${example_name} compiled successfully"
             log_info "  Binary: ${binary_path} ($(stat -c%s "$binary_path" | numfmt --to=iec-i --suffix=B))"
             return 0
         else
-            log_error "Binary not found: ${binary_path}"
+            log_error "✗ ${example_name} compilation failed"
+            log_error "  Binary not found: ${binary_path}"
+            log_info "  Check log: /tmp/compile_${example_name}.log"
+            tail -n 50 "/tmp/compile_${example_name}.log"
             return 1
         fi
     else
+        set +o pipefail
         log_error "✗ ${example_name} compilation failed"
         log_info "  Check log: /tmp/compile_${example_name}.log"
-        tail -n 30 "/tmp/compile_${example_name}.log"
+        tail -n 50 "/tmp/compile_${example_name}.log"
         return 1
     fi
 }

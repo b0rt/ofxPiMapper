@@ -69,8 +69,10 @@ if [ ! -d "$OF_ROOT" ]; then
     exit 1
 fi
 
-if [ ! -f "${OF_ROOT}/libs/openFrameworksCompiled/lib/*/libopenFrameworks.a" ]; then
+# Check if openFrameworks core library exists (handle glob pattern properly)
+if ! ls "${OF_ROOT}/libs/openFrameworksCompiled/lib/"/*/libopenFrameworks.a >/dev/null 2>&1; then
     log_error "openFrameworks core library not compiled"
+    log_error "Expected to find libopenFrameworks.a in ${OF_ROOT}/libs/openFrameworksCompiled/lib/"
     exit 1
 fi
 

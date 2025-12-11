@@ -111,6 +111,7 @@ log_info "Installing audio libraries..."
 apt-get install -y \
     libasound2-dev \
     libpulse-dev \
+    librtaudio-dev \
     alsa-utils \
     pulseaudio \
     libmpg123-dev \

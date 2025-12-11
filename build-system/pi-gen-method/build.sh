@@ -946,7 +946,8 @@ apt-get install -y \
     libv4l-dev \
     libxvidcore-dev \
     libx264-dev \
-    liburiparser-dev
+    liburiparser-dev \
+    zlib1g-dev
 
 ################################################################################
 # Install Utilities
@@ -955,6 +956,7 @@ apt-get install -y \
 echo "[INFO] Installing utilities..."
 apt-get install -y \
     curl \
+    libcurl4-openssl-dev \
     wget \
     unzip \
     rsync \

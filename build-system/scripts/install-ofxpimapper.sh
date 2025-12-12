@@ -317,7 +317,16 @@ compile_example() {
         set +o pipefail
         log_error "✗ ${example_name} compilation failed"
         log_info "  Check log: /tmp/compile_${example_name}.log"
-        tail -n 50 "/tmp/compile_${example_name}.log"
+
+        # Show actual error messages from the log
+        log_info "  Error summary:"
+        if grep -i "error:" "/tmp/compile_${example_name}.log" | head -n 20; then
+            echo ""
+            log_info "  (Showing first 20 error lines, full log available at /tmp/compile_${example_name}.log)"
+        else
+            log_info "  No explicit error messages found, showing last 50 lines:"
+            tail -n 50 "/tmp/compile_${example_name}.log"
+        fi
         return 1
     fi
 }

@@ -39,7 +39,7 @@ class VideoSource : public BaseSource {
 		#ifdef TARGET_RASPBERRY_PI
 			ofxVideoSync * _omxPlayer;
 		#else
-            unique_ptr<ofxVideoSync> _videoPlayer;
+            std::unique_ptr<ofxVideoSync> _videoPlayer;
 			bool _initialVolumeSet;
 		#endif
 	

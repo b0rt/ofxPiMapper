@@ -29,7 +29,7 @@ DirectoryWatcher::DirectoryWatcher(std::string path, int watcherMediaType){
         _directory.sort();
     }
 
-	for(int i = 0; i < _directory.size(); ++i){
+	for(std::size_t i = 0; i < _directory.size(); ++i){
 		_filePaths.push_back(directoryPath + _directory.getName(i));
 
 		ofFile file(directoryPath + _directory.getName(i));

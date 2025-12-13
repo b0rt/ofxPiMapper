@@ -875,6 +875,8 @@ apt-get install -y \
 echo "[INFO] Installing OpenGL ES and graphics libraries..."
 apt-get install -y \
     libgles2-mesa-dev \
+    libglu1-mesa-dev \
+    libglew-dev \
     libglfw3-dev \
     libegl1-mesa-dev \
     mesa-utils \
@@ -905,6 +907,7 @@ echo "[INFO] Installing audio libraries..."
 apt-get install -y \
     libasound2-dev \
     libpulse-dev \
+    librtaudio-dev \
     alsa-utils \
     pulseaudio \
     libmpg123-dev \
@@ -942,7 +945,9 @@ apt-get install -y \
     libswscale-dev \
     libv4l-dev \
     libxvidcore-dev \
-    libx264-dev
+    libx264-dev \
+    liburiparser-dev \
+    zlib1g-dev
 
 ################################################################################
 # Install Utilities
@@ -951,6 +956,7 @@ apt-get install -y \
 echo "[INFO] Installing utilities..."
 apt-get install -y \
     curl \
+    libcurl4-openssl-dev \
     wget \
     unzip \
     rsync \
@@ -1086,9 +1092,18 @@ mkdir -p "${STAGE_DIR}/04-install-ofxpimapper/files"
 cp "${BUILD_SYSTEM_DIR}/scripts/install-ofxpimapper.sh" \
    "${STAGE_DIR}/04-install-ofxpimapper/files/install-ofxpimapper.sh"
 
-cat > "${STAGE_DIR}/04-install-ofxpimapper/00-run-chroot.sh" <<'EOFRUN'
+cat > "${STAGE_DIR}/04-install-ofxpimapper/00-run-chroot.sh" <<EOFRUN
 #!/bin/bash -e
-bash /tmp/install-ofxpimapper.sh
+# Export ofxPiMapper configuration from build config
+export RPI_USERNAME="${RPI_USERNAME}"
+export OF_ROOT="${OF_ROOT}"
+export OFXPIMAPPER_REPO="${OFXPIMAPPER_REPO}"
+export OFXPIMAPPER_BRANCH="${OFXPIMAPPER_BRANCH}"
+export COMPILE_EXAMPLE="${COMPILE_EXAMPLE}"
+export ADDITIONAL_EXAMPLES="${ADDITIONAL_EXAMPLES}"
+export INSTALL_OPTIONAL_ADDONS="${INSTALL_OPTIONAL_ADDONS}"
+export PARALLEL_JOBS="${PARALLEL_JOBS}"
+bash /tmp/install-ofxpimapper.sh "${RPI_USERNAME}"
 EOFRUN
 
 chmod +x "${STAGE_DIR}/04-install-ofxpimapper/00-run.sh"

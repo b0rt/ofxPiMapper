@@ -46,7 +46,7 @@ if [ "$FORCE_X11" = "true" ]; then
     fi
 
     # Configure for desktop environments
-    USER_HOME="/home/${TARGET_USER}"
+    USER_HOME=$(getent passwd "${TARGET_USER}" | cut -d: -f6)
 
     # LXDE/Openbox configuration (Raspberry Pi OS default)
     if command -v openbox &> /dev/null; then
@@ -83,7 +83,7 @@ fi
 
 log_info "Configuring X11 display settings..."
 
-USER_HOME="/home/${TARGET_USER}"
+USER_HOME=$(getent passwd "${TARGET_USER}" | cut -d: -f6)
 XORG_CONF_DIR="/etc/X11/xorg.conf.d"
 mkdir -p "$XORG_CONF_DIR"
 
@@ -161,6 +161,9 @@ fi
 ################################################################################
 
 log_info "Creating .xinitrc..."
+
+# Ensure user home directory exists
+mkdir -p "${USER_HOME}"
 
 cat > "${USER_HOME}/.xinitrc" <<EOF
 #!/bin/sh

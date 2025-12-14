@@ -28,7 +28,7 @@ void VideoSource::loadVideo(std::string & filePath){
 		_omxPlayer = OMXPlayerCache::instance()->load(filePath);
 		texture = &(_omxPlayer->getTexture());
 	#else
-        _videoPlayer = make_unique<ofxVideoSync>();
+        _videoPlayer = std::make_unique<ofxVideoSync>();
 		_videoPlayer->load(filePath);
 		_videoPlayer->setLoopState(OF_LOOP_NORMAL);
 		_videoPlayer->play();

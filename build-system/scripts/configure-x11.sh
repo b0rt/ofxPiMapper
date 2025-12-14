@@ -178,6 +178,9 @@ fi
 
 log_info "Creating .xinitrc..."
 
+# Ensure user home directory exists
+mkdir -p "${USER_HOME}"
+
 cat > "${USER_HOME}/.xinitrc" <<EOF
 #!/bin/sh
 # .xinitrc for ofxPiMapper

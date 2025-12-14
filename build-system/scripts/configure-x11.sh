@@ -29,6 +29,22 @@ fi
 TARGET_USER="${1:-${RPI_USERNAME:-$(whoami)}}"
 FORCE_X11="${FORCE_X11:-true}"
 
+# Set USER_HOME correctly for root user
+if [ "$TARGET_USER" = "root" ]; then
+    USER_HOME="/root"
+else
+    USER_HOME="/home/${TARGET_USER}"
+fi
+
+# Ensure USER_HOME directory exists
+if [ ! -d "$USER_HOME" ]; then
+    log_warn "User home directory $USER_HOME does not exist, creating it..."
+    mkdir -p "$USER_HOME"
+    if [ "$TARGET_USER" != "root" ]; then
+        chown "${TARGET_USER}:${TARGET_USER}" "$USER_HOME"
+    fi
+fi
+
 log_info "Configuring X11 display server for ${TARGET_USER}"
 
 ################################################################################
@@ -46,7 +62,7 @@ if [ "$FORCE_X11" = "true" ]; then
     fi
 
     # Configure for desktop environments
-    USER_HOME=$(getent passwd "${TARGET_USER}" | cut -d: -f6)
+    # USER_HOME is already set above
 
     # LXDE/Openbox configuration (Raspberry Pi OS default)
     if command -v openbox &> /dev/null; then
@@ -83,7 +99,7 @@ fi
 
 log_info "Configuring X11 display settings..."
 
-USER_HOME=$(getent passwd "${TARGET_USER}" | cut -d: -f6)
+# USER_HOME is already set above based on user
 XORG_CONF_DIR="/etc/X11/xorg.conf.d"
 mkdir -p "$XORG_CONF_DIR"
 

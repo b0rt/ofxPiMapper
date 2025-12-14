@@ -69,12 +69,18 @@ if [ ! -d "$OF_ROOT" ]; then
     exit 1
 fi
 
-if [ ! -f "${OF_ROOT}/libs/openFrameworksCompiled/lib/*/libopenFrameworks.a" ]; then
+# Check if openFrameworks core library exists (handle glob pattern properly)
+if ! ls "${OF_ROOT}/libs/openFrameworksCompiled/lib/"/*/libopenFrameworks.a >/dev/null 2>&1; then
     log_error "openFrameworks core library not compiled"
+    log_error "Expected to find libopenFrameworks.a in ${OF_ROOT}/libs/openFrameworksCompiled/lib/"
     exit 1
 fi
 
 log_info "openFrameworks found at ${OF_ROOT}"
+
+# Ensure proper ownership of openFrameworks directory for target user
+log_info "Setting ownership of openFrameworks directory to ${TARGET_USER}..."
+chown -R "${TARGET_USER}:${TARGET_USER}" "$OF_ROOT"
 
 ################################################################################
 # Install Required Addons
@@ -87,9 +93,18 @@ log_progress "Installing required addons..."
 
 # Define required addons
 # Format: "repo_url|branch|addon_name"
-declare -a REQUIRED_ADDONS_LIST=(
-    "https://github.com/pierrep/ofxOMXPlayer.git|SeekingFix|ofxOMXPlayer"
-)
+declare -a REQUIRED_ADDONS_LIST=()
+
+# Add Raspberry Pi-specific addons only on actual hardware
+# ofxOMXPlayer is the hardware-accelerated video player for Raspberry Pi
+if [ -f /proc/device-tree/model ] && grep -q "Raspberry Pi" /proc/device-tree/model 2>/dev/null; then
+    log_info "Detected Raspberry Pi hardware, adding ofxOMXPlayer..."
+    REQUIRED_ADDONS_LIST+=(
+        "https://github.com/pierrep/ofxOMXPlayer.git|master|ofxOMXPlayer"
+    )
+else
+    log_info "Not running on Raspberry Pi hardware, skipping ofxOMXPlayer (hardware-specific)"
+fi
 
 # Add optional addons if configured
 if [ "${INSTALL_OPTIONAL_ADDONS:-true}" = "true" ]; then
@@ -278,25 +293,40 @@ compile_example() {
     # Clean previous builds
     sudo -u "$TARGET_USER" make clean || true
 
-    # Compile
+    # Compile (use pipefail to catch make errors even with tee)
+    set -o pipefail
     if sudo -u "$TARGET_USER" make -j${PARALLEL_JOBS} 2>&1 | tee "/tmp/compile_${example_name}.log"; then
-        log_info "✓ ${example_name} compiled successfully"
+        set +o pipefail
 
         # Verify binary
         local binary_path="bin/${example_name}"
         if [ -f "$binary_path" ]; then
             chmod +x "$binary_path"
             chown "${TARGET_USER}:${TARGET_USER}" "$binary_path"
+            log_info "✓ ${example_name} compiled successfully"
             log_info "  Binary: ${binary_path} ($(stat -c%s "$binary_path" | numfmt --to=iec-i --suffix=B))"
             return 0
         else
-            log_error "Binary not found: ${binary_path}"
+            log_error "✗ ${example_name} compilation failed"
+            log_error "  Binary not found: ${binary_path}"
+            log_info "  Check log: /tmp/compile_${example_name}.log"
+            tail -n 50 "/tmp/compile_${example_name}.log"
             return 1
         fi
     else
+        set +o pipefail
         log_error "✗ ${example_name} compilation failed"
         log_info "  Check log: /tmp/compile_${example_name}.log"
-        tail -n 30 "/tmp/compile_${example_name}.log"
+
+        # Show actual error messages from the log
+        log_info "  Error summary:"
+        if grep -i "error:" "/tmp/compile_${example_name}.log" | head -n 20; then
+            echo ""
+            log_info "  (Showing first 20 error lines, full log available at /tmp/compile_${example_name}.log)"
+        else
+            log_info "  No explicit error messages found, showing last 50 lines:"
+            tail -n 50 "/tmp/compile_${example_name}.log"
+        fi
         return 1
     fi
 }

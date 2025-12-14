@@ -68,6 +68,8 @@ apt-get install -y \
 log_info "Installing OpenGL ES and graphics libraries..."
 apt-get install -y \
     libgles2-mesa-dev \
+    libglu1-mesa-dev \
+    libglew-dev \
     libglfw3-dev \
     libegl1-mesa-dev \
     mesa-utils \
@@ -109,6 +111,7 @@ log_info "Installing audio libraries..."
 apt-get install -y \
     libasound2-dev \
     libpulse-dev \
+    librtaudio-dev \
     alsa-utils \
     pulseaudio \
     libmpg123-dev \
@@ -151,7 +154,9 @@ apt-get install -y \
     libswscale-dev \
     libv4l-dev \
     libxvidcore-dev \
-    libx264-dev
+    libx264-dev \
+    liburiparser-dev \
+    zlib1g-dev
 
 ################################################################################
 # Install Utilities
@@ -160,6 +165,7 @@ apt-get install -y \
 log_info "Installing utilities..."
 apt-get install -y \
     curl \
+    libcurl4-openssl-dev \
     wget \
     unzip \
     rsync \
